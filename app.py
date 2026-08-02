@@ -299,7 +299,7 @@ def get_cancel_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Cancel")]], resize_keyboard=True)
 
 def get_ai_mode_keyboard():
-    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai"]
+    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai" and k != "best_ai_selector"]
     keyboard = []
     row = []
     
@@ -314,9 +314,12 @@ def get_ai_mode_keyboard():
     if row:
         keyboard.append(row)
         
+    # ✅ Best AI Selector ကို ထည့်ပါ
+    best_ai_btn = KeyboardButton(text="Best AI Selector", icon_custom_emoji_id="5884289942371401145", style="success")
     pro_btn = KeyboardButton(text="Pro AI Features", icon_custom_emoji_id="5807868868886009920", style="success")
     back_btn = KeyboardButton(text="BACK", icon_custom_emoji_id="5848119413041431362", style="primary")
-    keyboard.append([pro_btn])
+    
+    keyboard.append([best_ai_btn, pro_btn])
     keyboard.append([back_btn])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
