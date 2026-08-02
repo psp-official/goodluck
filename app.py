@@ -766,7 +766,9 @@ async def btn_ai_prediction_toggle(message: types.Message):
 
 @dp.callback_query(F.data == "toggle_aipred")
 async def process_toggle_aipred(callback: types.CallbackQuery):
-    user_tg_id = callback.from_user.id    if user_tg_id not in active_sessions:
+    user_tg_id = callback.from_user.id
+    
+    if user_tg_id not in active_sessions:
         await callback.answer("Session Expired.")
         return
         
