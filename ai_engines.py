@@ -1223,7 +1223,7 @@ AI_MODE_NAMES = {
 
 AI_MODES = {
     "pattern":          {"func": pattern_predict,           "name": AI_MODE_NAMES["pattern"],         "desc": "Pattern v2 (26 patterns, recency)"},
-    "best_ai_selector": {"func": best_ai_selector_predict,   "name": AI_MODE_NAMES"[Best AI Selector"], "desc": "Auto-Optimizer"},
+    "best_ai_selector": {"func": best_ai_selector_predict,   "name": AI_MODE_NAMES["Best AI Selector"], "desc": "Auto-Optimizer"},
     "martingale":       {"func": martingale_predict,        "name": AI_MODE_NAMES["martingale"],      "desc": "Multi-Win Contrarian"},
     "anti_martingale":  {"func": anti_martingale_predict,   "name": AI_MODE_NAMES["anti_martingale"], "desc": "Exp-Streak Follow"},
     "trend_following":  {"func": trend_following_predict,   "name": AI_MODE_NAMES["trend_following"], "desc": "EMA 3-Timeframe"},
