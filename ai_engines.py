@@ -1201,6 +1201,7 @@ def best_ai_selector_predict(history_docs):
 # ==========================================
 AI_MODE_NAMES = {
     "pattern":          "Pattern AI",
+    "best_ai_selector": "Best AI Selector",
     "martingale":       "Martingale AI",
     "anti_martingale":  "Anti-Martingale AI",
     "trend_following":  "Trend Following",
