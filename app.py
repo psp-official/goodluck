@@ -626,7 +626,6 @@ async def get_latest_game_result(target_issue, user_tg_id):
 async def get_ai_prediction(user_tg_id):
     """
     Database ထဲက 9000+ ပွဲစဉ်ကို အသုံးပြုပြီး AI ခန့်မှန်းချက်ကို ရယူခြင်း။
-    API ကို ထပ်မံမခေါ်တော့ပါ။
     """
     session_data = active_sessions.get(user_tg_id, {})
     if not session_data:
@@ -642,7 +641,7 @@ async def get_ai_prediction(user_tg_id):
     if not db_records:
         return None, 0, None, None
             
-    # နောက်ဆုံးပွဲစဉ်ကို ရှာဖွေခြင်း
+    # ✅ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူပြီး +1 လုပ်ကာ နောက်ထွက်တော့မည့် Issue ကို ဖန်တီးမည်
     last_issue = db_records[0]['issue'] if db_records else "0"
     next_issue = str(int(last_issue) + 1)
         
@@ -669,7 +668,7 @@ async def get_ai_prediction(user_tg_id):
     # 2️⃣ Best AI Selector (Auto-Select Best Model based on Win Rate)
     elif user_ai_name == "Best AI Selector":
         predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,  # 9000+ ပွဲစဉ်
+            history_docs=db_records,
             mode="best_ai_selector",
             model_accuracies=session_data.get("model_accuracies", {})
         )
@@ -678,7 +677,7 @@ async def get_ai_prediction(user_tg_id):
     # 3️⃣ Best Pattern Auto-Switch (Dynamic Pattern Switching)
     elif user_ai_name == "Best Pattern Auto-Switch":
         predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,  # 9000+ ပွဲစဉ်
+            history_docs=db_records,
             mode="dynamic_best_pattern",
             model_accuracies=session_data.get("model_accuracies", {})
         )
@@ -686,7 +685,6 @@ async def get_ai_prediction(user_tg_id):
         
     # 4️⃣ Other AI Models
     else:
-        # ကျန် AI Model များအတွက်
         mode_key = "pattern"
         for key, val in ai_engines.AI_MODES.items():
             if val["name"] == user_ai_name:
@@ -694,7 +692,7 @@ async def get_ai_prediction(user_tg_id):
                 break
         
         predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,  # 9000+ ပွဲစဉ်
+            history_docs=db_records,
             mode=mode_key,
             model_accuracies=session_data.get("model_accuracies", {})
         )
@@ -916,10 +914,14 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
         try:
             pred, _, issue, ai_name = await get_ai_prediction(user_tg_id)
             
+            # ✅ get_ai_prediction က နောက်ထွက်တော့မယ့် issue ကို ထုတ်ပေးပြီးသားမို့ issue ကို တိုက်ရိုက်သုံးမယ်။
             if issue and issue != last_issue:
+                # game_type ပေါ်မူတည်ပြီး စောင့်ချိန်တွက်ခြင်း
                 if gn == "WINGO_1M":
                     await asyncio.sleep(30)
-                    
+                elif gn == "WINGO_30S":
+                    await asyncio.sleep(10)
+                
                 if pred == "wait":
                     msg_txt = (
                         f"<blockquote>\n"
