@@ -621,7 +621,7 @@ async def get_latest_game_result(target_issue, user_tg_id):
     return "? | ?"
 
 # ==========================================================
-# 🧠 GET AI PREDICTION (9000+ DB Data with Best AI Selector)
+# 🧠 GET AI PREDICTION (9000+ DB Data with All Modes)
 # ==========================================================
 async def get_ai_prediction(user_tg_id):
     """
@@ -637,7 +637,7 @@ async def get_ai_prediction(user_tg_id):
     type_id = session_data.get("game_type_id", 30)
     
     # ✅ Database မှ 9000+ ပွဲစဉ်ကို ပြန်ယူမည်
-    db_records = await db.get_game_history(site, type_id, limit=1000)
+    db_records = await db.get_game_history(site, type_id, limit=9000)
     
     if not db_records:
         return None, 0, None, None
@@ -651,6 +651,7 @@ async def get_ai_prediction(user_tg_id):
     
     from ai_engines import get_prediction
     
+    # 1️⃣ Set Pattern (User Custom Pattern)
     if user_ai_name == "Set Pattern":
         pat = session_data.get("custom_pattern", ["BIG"])
         step = session_data.get("custom_pattern_step", 0)
@@ -665,8 +666,8 @@ async def get_ai_prediction(user_tg_id):
                 
         return target_bet.lower(), 100, next_issue, user_ai_name
         
-    elif user_ai_name == "🏆 Best AI Selector":
-        # ✅ Best AI Selector အတွက် DB Records 9000 ကို တိုက်ရိုက်ပို့မည်
+    # 2️⃣ Best AI Selector (Auto-Select Best Model based on Win Rate)
+    elif user_ai_name == "Best AI Selector":
         predicted_size, _, confidence, _ = get_prediction(
             history_docs=db_records,  # 9000+ ပွဲစဉ်
             mode="best_ai_selector",
@@ -674,6 +675,16 @@ async def get_ai_prediction(user_tg_id):
         )
         return predicted_size.lower(), confidence, next_issue, user_ai_name
         
+    # 3️⃣ Best Pattern Auto-Switch (Dynamic Pattern Switching)
+    elif user_ai_name == "Best Pattern Auto-Switch":
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,  # 9000+ ပွဲစဉ်
+            mode="dynamic_best_pattern",
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
+        
+    # 4️⃣ Other AI Models
     else:
         # ကျန် AI Model များအတွက်
         mode_key = "pattern"
