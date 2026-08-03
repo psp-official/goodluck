@@ -65,7 +65,7 @@ AI_MODE_EMOJIS = {
     "Circle Rnd":        "5226711870492126219",
     "Custom Pattern":    "6300853298249336390",
     "AI Auto Swap":      "5868665489092263539",
-    "🏆 Best AI Selector": "5884289942371401145"
+    "Best AI Selector": "5884289942371401145"
 }
 
 # ==========================================================
@@ -1196,12 +1196,76 @@ def best_ai_selector_predict(history_docs):
     except:
         return "BIG", f"🏆 {best_name} (အကြီး) 🔴", best_rate, f"Best AI Auto-Selected (Win Rate: {best_rate:.1f}%)"
 
+
+# ==========================================================
+# 🎯 Last 4 Pattern Predictor (9000+ DB)
+# ==========================================================
+def last_4_pattern_predict(history_docs):
+    """
+    Database ထဲက 9000+ ပွဲစဉ်ကို အသုံးပြုပြီး 
+    နောက်ဆုံးထွက်ပွဲ 4 ခုကို ကြည့်ကာ၊ 
+    အဲ့ဒီ 4 ခုနောက်မှာ အများဆုံးထွက်ခဲ့တဲ့ ရလဒ်ကို ခန့်မှန်းခြင်း။
+    """
+    if len(history_docs) < 10:
+        return "BIG", "📊 Last4 (အကြီး) 🔴", 55.0, "Data မလုံလောက်သေး (Need 10+ games)"
+
+    docs = list(reversed(history_docs))  # oldest to newest
+    all_history = [d.get('size', 'BIG') for d in docs]
+    
+    # နောက်ဆုံးထွက် 4 ခုကို ယူမည်
+    if len(all_history) < 4:
+        return "BIG", "📊 Last4 (အကြီး) 🔴", 55.0, "Data မလုံလောက်ပါ"
+        
+    last_4 = all_history[-4:]
+    
+    # Database ထဲက 9000+ ပွဲစဉ်ထဲမှာ ဒီ 4 ခု Pattern ရှိခဲ့ဖူးလား ရှာမည်
+    big_count = 0
+    small_count = 0
+    total_matches = 0
+    
+    # နောက်ဆုံး 4 ခု မပါဝင်အောင် ရှာမည်
+    for i in range(len(all_history) - 5):
+        if all_history[i:i+4] == last_4:
+            total_matches += 1
+            next_result = all_history[i+4]
+            if next_result == "BIG":
+                big_count += 1
+            else:
+                small_count += 1
+                
+    # Pattern မတွေ့ပါက နောက်ဆုံးပွဲရလဒ်ကို ခန့်မှန်းမည်
+    if total_matches == 0:
+        pred = all_history[-1]
+        burmese, dot = _label(pred)
+        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", 55.0, f"Pattern အသစ် (No match) → {pred}"
+        
+    # အများဆုံးထွက်တာကို ရွေးမည်
+    if big_count > small_count:
+        pred = "BIG"
+        confidence = min(55 + (big_count / total_matches) * 30, 85)
+        burmese, dot = _label(pred)
+        pattern_str = "-".join(last_4).replace('BIG', 'B').replace('SMALL', 'S')
+        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({big_count}/{total_matches})"
+    elif small_count > big_count:
+        pred = "SMALL"
+        confidence = min(55 + (small_count / total_matches) * 30, 85)
+        burmese, dot = _label(pred)
+        pattern_str = "-".join(last_4).replace('BIG', 'B').replace('SMALL', 'S')
+        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({small_count}/{total_matches})"
+    else:
+        # တူညီနေပါက အများဆုံးထွက်တဲ့ဘက်ကို ရွေးမည်
+        pred = all_history[-1]
+        burmese, dot = _label(pred)
+        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", 55.0, f"Pattern {last_4} (မဲတူနေသဖြင့် နောက်ဆုံးပွဲအတိုင်း)"
+
+
 # ==========================================
 # 📊 AI Modes Dictionary Update
 # ==========================================
 AI_MODE_NAMES = {
     "pattern":          "Pattern AI",
     "best_ai_selector": "Best AI Selector",
+    "last_4_pattern":   "Last 4 Pattern",
     "martingale":       "Martingale AI",
     "anti_martingale":  "Anti-Martingale AI",
     "trend_following":  "Trend Following",
@@ -1225,6 +1289,11 @@ AI_MODE_NAMES = {
 AI_MODES = {
     "pattern":          {"func": pattern_predict,           "name": AI_MODE_NAMES["pattern"],         "desc": "Pattern v2 (26 patterns, recency)"},
     "best_ai_selector": {"func": best_ai_selector_predict,   "name": AI_MODE_NAMES["best_ai_selector"], "desc": "Auto-Optimizer"},
+    "last_4_pattern": {
+        "func": last_4_pattern_predict,
+        "name": AI_MODE_NAMES["last_4_pattern"],  
+        "desc": "နောက်ဆုံး 4 ခုကိုကြည့်ပြီး အများဆုံးထွက်တာကို ရွေးခြင်း"
+    },
     "martingale":       {"func": martingale_predict,        "name": AI_MODE_NAMES["martingale"],      "desc": "Multi-Win Contrarian"},
     "anti_martingale":  {"func": anti_martingale_predict,   "name": AI_MODE_NAMES["anti_martingale"], "desc": "Exp-Streak Follow"},
     "trend_following":  {"func": trend_following_predict,   "name": AI_MODE_NAMES["trend_following"], "desc": "EMA 3-Timeframe"},
