@@ -643,7 +643,7 @@ async def get_ai_prediction(user_tg_id):
             
     # ✅ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူပြီး +1 လုပ်ကာ နောက်ထွက်တော့မည့် Issue ကို ဖန်တီးမည်
     last_issue = db_records[0]['issue'] if db_records else "0"
-    next_issue = str(int(last_issue) + 1)
+    next_issue = str(int(last_issue) + 1)  # <-- ဒီနေရာမှာ +1 လုပ်ပြီး ထုတ်ပေးရမယ်
         
     # နောက်ဆုံးပွဲစဉ် 9000 ကို AI သို့ ပို့ပေးမည်
     user_ai_name = session_data.get("ai_mode", "Pattern AI")
