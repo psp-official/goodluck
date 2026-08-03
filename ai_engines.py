@@ -1259,11 +1259,105 @@ def last_4_pattern_predict(history_docs):
         return pred, f"📊 Last4: {pred} ({burmese}) {dot}", 55.0, f"Pattern {last_4} (မဲတူနေသဖြင့် နောက်ဆုံးပွဲအတိုင်း)"
 
 
+# ==========================================================
+# 🎯 DYNAMIC BEST PATTERN SELECTOR (Auto-Switch based on 9000+ DB)
+# ==========================================================
+def dynamic_best_pattern_predict(history_docs):
+    """
+    Database ထဲက 9000+ ပွဲစဉ်ကို အသုံးပြုပြီး 
+    နောက်ဆုံးထွက်ပွဲ 4 ခုကို ကြည့်ကာ၊ 
+    အဲ့ဒီ 4 ခု Pattern ကို သမိုင်းကြောင်းနဲ့ နှိုင်းယှဉ်ပြီး 
+    အထွက်နိုင်ဆုံး Pattern ကို အလိုအလျောက် ရွေးချယ်ခန့်မှန်းခြင်း။
+    
+    အထူးအချက်: 
+    - အလုပ်ဖြစ်နေတဲ့ Pattern ကို ဆက်သုံးမယ်။
+    - အလုပ်မဖြစ်တော့ရင် နောက်ဆုံး 9000 ပွဲမှာ Win Rate အမြင့်ဆုံး Pattern ကို အလိုအလျောက် ပြောင်းမယ်။
+    """
+    if len(history_docs) < 10:
+        return "BIG", "🔁 Best Pattern (အကြီး) 🔴", 55.0, "Data မလုံလောက်သေး (Need 10+ games)"
+
+    docs = list(reversed(history_docs))  # oldest to newest
+    all_history = [d.get('size', 'BIG') for d in docs]
+    
+    # နောက်ဆုံးထွက် 4 ခုကို ယူမည်
+    if len(all_history) < 4:
+        return "BIG", "🔁 Best Pattern (အကြီး) 🔴", 55.0, "Data မလုံလောက်ပါ"
+        
+    last_4 = all_history[-4:]
+    pattern_str = "-".join(last_4).replace('BIG', 'B').replace('SMALL', 'S')
+    
+    # 1️⃣ လက်ရှိ Pattern က အလုပ်ဖြစ်နေသေးလား စစ်ဆေးမည်
+    current_pattern_win_rate = 0.0
+    current_pattern_count = 0
+    current_pattern_wins = 0
+    
+    for i in range(len(all_history) - 5):
+        if all_history[i:i+4] == last_4:
+            current_pattern_count += 1
+            if all_history[i+4] == all_history[-1]:  # နောက်ဆုံးပွဲကို မှန်ကန်ခဲ့ရင်
+                current_pattern_wins += 1
+                
+    if current_pattern_count > 5:  # အနည်းဆုံး 5 ကြိမ် ရှိခဲ့ရင်
+        current_pattern_win_rate = (current_pattern_wins / current_pattern_count) * 100
+    
+    # 2️⃣ အကယ်၍ လက်ရှိ Pattern က Win Rate > 60% ရှိနေသေးရင် ဆက်သုံးမည်
+    if current_pattern_win_rate >= 60.0:
+        # နောက်ဆုံးပွဲရလဒ်ကို ခန့်မှန်းမည်
+        pred = all_history[-1]
+        burmese, dot = _label(pred)
+        return pred, f"🔁 {pattern_str} → {pred} ({burmese}) {dot}", min(current_pattern_win_rate + 10, 85), f"Current Pattern Active ({current_pattern_win_rate:.1f}%)"
+    
+    # 3️⃣ အလုပ်မဖြစ်တော့ရင် Database ထဲက 9000+ ပွဲစဉ်မှာ အထွက်နိုင်ဆုံး Pattern ကို ရှာမည်
+    best_pattern = None
+    best_pattern_win_rate = 0.0
+    best_prediction = None
+    
+    # နောက်ဆုံး 9000 ပွဲထဲမှာ ရှိတဲ့ Pattern အားလုံးကို စစ်ဆေးမည်
+    pattern_wins = {}
+    pattern_counts = {}
+    
+    for i in range(len(all_history) - 5):
+        current_4 = all_history[i:i+4]
+        next_result = all_history[i+4]
+        pattern_key = "-".join(current_4).replace('BIG', 'B').replace('SMALL', 'S')
+        
+        if pattern_key not in pattern_counts:
+            pattern_counts[pattern_key] = 0
+            pattern_wins[pattern_key] = {"BIG": 0, "SMALL": 0}
+            
+        pattern_counts[pattern_key] += 1
+        pattern_wins[pattern_key][next_result] += 1
+    
+    # အထွက်နိုင်ဆုံး Pattern ကို ရှာမည်
+    for pattern_key, count in pattern_counts.items():
+        if count >= 5:  # အနည်းဆုံး 5 ကြိမ် ရှိခဲ့ရင်
+            big_wins = pattern_wins[pattern_key]["BIG"]
+            small_wins = pattern_wins[pattern_key]["SMALL"]
+            total_wins = big_wins + small_wins
+            win_rate = (max(big_wins, small_wins) / total_wins) * 100
+            
+            if win_rate > best_pattern_win_rate:
+                best_pattern_win_rate = win_rate
+                best_pattern = pattern_key
+                best_prediction = "BIG" if big_wins > small_wins else "SMALL"
+    
+    # 4️⃣ အထွက်နိုင်ဆုံး Pattern ကို ရွေးပြီး ခန့်မှန်းမည်
+    if best_pattern and best_prediction:
+        burmese, dot = _label(best_prediction)
+        return best_prediction, f"🔁 Best: {best_pattern} → {best_prediction} ({burmese}) {dot}", min(best_pattern_win_rate + 10, 90), f"Auto-Switched to {best_pattern} ({best_pattern_win_rate:.1f}%)"
+    
+    # 5️⃣ Pattern မတွေ့ပါက နောက်ဆုံးပွဲရလဒ်ကို ခန့်မှန်းမည်
+    pred = all_history[-1]
+    burmese, dot = _label(pred)
+    return pred, f"🔁 {pred} ({burmese}) {dot}", 55.0, "No winning pattern found"
+
+
 # ==========================================
 # 📊 AI Modes Dictionary Update
 # ==========================================
 AI_MODE_NAMES = {
     "pattern":          "Pattern AI",
+    "dynamic_best_pattern": "Best Pattern Auto-Switch",
     "best_ai_selector": "Best AI Selector",
     "last_4_pattern":   "Last 4 Pattern",
     "martingale":       "Martingale AI",
@@ -1289,6 +1383,11 @@ AI_MODE_NAMES = {
 AI_MODES = {
     "pattern":          {"func": pattern_predict,           "name": AI_MODE_NAMES["pattern"],         "desc": "Pattern v2 (26 patterns, recency)"},
     "best_ai_selector": {"func": best_ai_selector_predict,   "name": AI_MODE_NAMES["best_ai_selector"], "desc": "Auto-Optimizer"},
+    "dynamic_best_pattern": {
+        "func": dynamic_best_pattern_predict,
+        "name": AI_MODE_NAMES["dynamic_best_pattern"],
+        "desc": "Auto-Switch to best pattern based on 9000+ DB"
+    },
     "last_4_pattern": {
         "func": last_4_pattern_predict,
         "name": AI_MODE_NAMES["last_4_pattern"],  
