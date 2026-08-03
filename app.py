@@ -1,4 +1,3 @@
-# bot.py
 import asyncio
 import os
 import html
@@ -224,7 +223,7 @@ class AuthMiddleware(BaseMiddleware):
             
             if not is_authorized:
                 if isinstance(event, types.Message):
-                    await event.answer("Contact @iwillgoforwardsalone")
+                    await event.answer("ᴄᴏɴᴛᴀᴄᴛ ᴜꜱ @iwillgoforwardsalone")
                 elif isinstance(event, types.CallbackQuery):
                     await event.answer("အသုံးပြုခွင့် သက်တမ်းကုန်သွားပါပြီ။", show_alert=True)
                 return 
@@ -299,7 +298,7 @@ def get_cancel_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Cancel")]], resize_keyboard=True)
 
 def get_ai_mode_keyboard():
-    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai" and k != "best_ai_selector"]
+    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai"]
     keyboard = []
     row = []
     
@@ -314,12 +313,9 @@ def get_ai_mode_keyboard():
     if row:
         keyboard.append(row)
         
-    # ✅ Best AI Selector ကို ထည့်ပါ
-    best_ai_btn = KeyboardButton(text="Best AI Selector", icon_custom_emoji_id="5884289942371401145", style="success")
     pro_btn = KeyboardButton(text="Pro AI Features", icon_custom_emoji_id="5807868868886009920", style="success")
     back_btn = KeyboardButton(text="BACK", icon_custom_emoji_id="5848119413041431362", style="primary")
-    
-    keyboard.append([best_ai_btn, pro_btn])
+    keyboard.append([pro_btn])
     keyboard.append([back_btn])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -621,12 +617,9 @@ async def get_latest_game_result(target_issue, user_tg_id):
     return "? | ?"
 
 # ==========================================================
-# 🧠 GET AI PREDICTION (9000+ DB Data with All Modes)
+# 🧠 GET AI PREDICTION (PSP_AI_PREDICT Version)
 # ==========================================================
 async def get_ai_prediction(user_tg_id):
-    """
-    Database ထဲက 9000+ ပွဲစဉ်ကို အသုံးပြုပြီး AI ခန့်မှန်းချက်ကို ရယူခြင်း။
-    """
     session_data = active_sessions.get(user_tg_id, {})
     if not session_data:
         return None, 0, None, None
@@ -635,68 +628,87 @@ async def get_ai_prediction(user_tg_id):
     token = session_data.get("token")
     type_id = session_data.get("game_type_id", 30)
     
-    # ✅ Database မှ 9000+ ပွဲစဉ်ကို ပြန်ယူမည်
-    db_records = await db.get_game_history(site, type_id, limit=1000)
+    config = SITE_CONFIGS.get(site)
+    url = f"{config['api_url']}/GetNoaverageEmerdList"
     
-    if not db_records:
-        return None, 0, None, None
-            
-    # ✅ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူပြီး +1 လုပ်ကာ နောက်ထွက်တော့မည့် Issue ကို ဖန်တီးမည်
-    last_issue = db_records[0]['issue'] if db_records else "0"
-    next_issue = str(int(last_issue) + 1)  # <-- ဒီနေရာမှာ +1 လုပ်ပြီး ထုတ်ပေးရမယ်
-        
-    # နောက်ဆုံးပွဲစဉ် 9000 ကို AI သို့ ပို့ပေးမည်
-    user_ai_name = session_data.get("ai_mode", "Pattern AI")
-    
-    from ai_engines import get_prediction
-    
-    # 1️⃣ Set Pattern (User Custom Pattern)
-    if user_ai_name == "Set Pattern":
-        pat = session_data.get("custom_pattern", ["BIG"])
-        step = session_data.get("custom_pattern_step", 0)
-        target_bet = pat[step]
-        
-        if step == 0:
-            recent_num = int(db_records[0]['number'])
-            recent_size = "BIG" if recent_num >= 5 else "SMALL"
-            trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
-            if recent_size != trigger_size:
-                return "wait", 100, next_issue, user_ai_name
+    payload = {'pageSize': 100, 'pageNo': 1, 'typeId': type_id, 'language': 7}
+    headers = get_headers(site, token)
+    signed_payload = get_signed_payload(payload)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=signed_payload) as resp:
+                api_result = await resp.json()
+                records = api_result.get('data', {}).get('list', [])
                 
-        return target_bet.lower(), 100, next_issue, user_ai_name
+        if not records:
+            return None, 0, None, None
+            
+        last_completed_issue = records[0]['issueNumber']
+        next_issue = str(int(last_completed_issue) + 1)
         
-    # 2️⃣ Best AI Selector (Auto-Select Best Model based on Win Rate)
-    elif user_ai_name == "Best AI Selector":
-        predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,
-            mode="best_ai_selector",
-            model_accuracies=session_data.get("model_accuracies", {})
-        )
+        for item in records:
+            num = int(item['number'])
+            size_text = "BIG" if num >= 5 else "SMALL"
+            await db.save_game_record(site, type_id, item['issueNumber'], num, size_text)
+        
+        db_records = await db.get_game_history(site, type_id, limit=5000)
+        
+        history_list = []
+        for item in db_records:
+            history_list.append(item['size'])
+        
+        if not history_list:
+            for item in records:
+                num = int(item['number'])
+                size_text = "BIG" if num >= 5 else "SMALL"
+                history_list.append(size_text)
+        
+        from ai_engines import psp_ai_predict
+        
+        result = psp_ai_predict(history_list)
+        
+        predicted_size = result["prediction"]
+        confidence = result["confidence"]
+        reason = result["reason"]
+        display = result["display"]
+        
+        user_ai_name = session_data.get("ai_mode", "PSP_AI_PREDICT")
+        
+        if user_ai_name == "Set Pattern":
+            pat = session_data.get("custom_pattern", ["BIG"])
+            step = session_data.get("custom_pattern_step", 0)
+            target_bet = pat[step]
+            
+            if step == 0:
+                recent_num = int(records[0]['number'])
+                recent_size = "BIG" if recent_num >= 5 else "SMALL"
+                trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
+                if recent_size != trigger_size:
+                    return "wait", 100, next_issue, user_ai_name
+                    
+            return target_bet.lower(), 100, next_issue, user_ai_name
+        
+        elif user_ai_name != "PSP_AI_PREDICT":
+            mode_key = "pattern"
+            for key, val in ai_engines.AI_MODES.items():
+                if val["name"] == user_ai_name:
+                    mode_key = key
+                    break
+            
+            model_acc = session_data.get("model_accuracies", {})
+            predicted_size, _, confidence, _ = ai_engines.get_prediction(
+                history_docs=db_records,
+                mode=mode_key,
+                model_accuracies=model_acc
+            )
+            return predicted_size.lower(), confidence, next_issue, user_ai_name
+        
         return predicted_size.lower(), confidence, next_issue, user_ai_name
         
-    # 3️⃣ Best Pattern Auto-Switch (Dynamic Pattern Switching)
-    elif user_ai_name == "Best Pattern Auto-Switch":
-        predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,
-            mode="dynamic_best_pattern",
-            model_accuracies=session_data.get("model_accuracies", {})
-        )
-        return predicted_size.lower(), confidence, next_issue, user_ai_name
-        
-    # 4️⃣ Other AI Models
-    else:
-        mode_key = "pattern"
-        for key, val in ai_engines.AI_MODES.items():
-            if val["name"] == user_ai_name:
-                mode_key = key
-                break
-        
-        predicted_size, _, confidence, _ = get_prediction(
-            history_docs=db_records,
-            mode=mode_key,
-            model_accuracies=session_data.get("model_accuracies", {})
-        )
-        return predicted_size.lower(), confidence, next_issue, user_ai_name
+    except Exception as e:
+        print(f"Prediction Error: {e}")
+        return None, 0, None, None
 
 async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, silent=False):
     try:
@@ -744,10 +756,6 @@ async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, s
         return False
 
 def update_model_accuracies(user_tg_id, actual_result_size):
-    """
-    AI Model တစ်ခုချင်းစီရဲ့ Win Rate (Accuracy) ကို Update လုပ်ခြင်း။
-    Online Learning စနစ်။
-    """
     if user_tg_id not in active_sessions:
         return
         
@@ -779,7 +787,6 @@ async def btn_ai_prediction_toggle(message: types.Message):
 @dp.callback_query(F.data == "toggle_aipred")
 async def process_toggle_aipred(callback: types.CallbackQuery):
     user_tg_id = callback.from_user.id
-    
     if user_tg_id not in active_sessions:
         await callback.answer("Session Expired.")
         return
@@ -914,14 +921,10 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
         try:
             pred, _, issue, ai_name = await get_ai_prediction(user_tg_id)
             
-            # ✅ get_ai_prediction က နောက်ထွက်တော့မယ့် issue ကို ထုတ်ပေးပြီးသားမို့ issue ကို တိုက်ရိုက်သုံးမယ်။
             if issue and issue != last_issue:
-                # game_type ပေါ်မူတည်ပြီး စောင့်ချိန်တွက်ခြင်း
                 if gn == "WINGO_1M":
                     await asyncio.sleep(30)
-                elif gn == "WINGO_30S":
-                    await asyncio.sleep(10)
-                
+                    
                 if pred == "wait":
                     msg_txt = (
                         f"<blockquote>\n"
@@ -1012,7 +1015,7 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
                 last_issue = issue
                 await asyncio.sleep(7) 
 
-                # ✅ Virtual Mode မှာ Real API Data ကိုသာ စောင့်ယူမည်
+                # ✅ FIX: Virtual Mode မှာ Random မသုံးတော့ပါ။ API Real Data ကိုသာ စောင့်ယူမည်။
                 if is_virtual:
                     res = await get_latest_game_result(issue, user_tg_id)
                     for _ in range(45):
