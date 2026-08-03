@@ -636,7 +636,7 @@ async def get_ai_prediction(user_tg_id):
     type_id = session_data.get("game_type_id", 30)
     
     # ✅ Database မှ 9000+ ပွဲစဉ်ကို ပြန်ယူမည်
-    db_records = await db.get_game_history(site, type_id, limit=9000)
+    db_records = await db.get_game_history(site, type_id, limit=1000)
     
     if not db_records:
         return None, 0, None, None
