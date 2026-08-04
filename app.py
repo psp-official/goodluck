@@ -1,3 +1,4 @@
+# bot.py
 import asyncio
 import os
 import html
@@ -223,7 +224,7 @@ class AuthMiddleware(BaseMiddleware):
             
             if not is_authorized:
                 if isinstance(event, types.Message):
-                    await event.answer("ᴄᴏɴᴛᴀᴄᴛ ᴜꜱ @iwillgoforwardsalone")
+                    await event.answer("Contact @iwillgoforwardsalone")
                 elif isinstance(event, types.CallbackQuery):
                     await event.answer("အသုံးပြုခွင့် သက်တမ်းကုန်သွားပါပြီ။", show_alert=True)
                 return 
@@ -298,7 +299,7 @@ def get_cancel_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Cancel")]], resize_keyboard=True)
 
 def get_ai_mode_keyboard():
-    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai"]
+    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai" and k != "best_ai_selector"]
     keyboard = []
     row = []
     
@@ -313,9 +314,12 @@ def get_ai_mode_keyboard():
     if row:
         keyboard.append(row)
         
+    # ✅ Best AI Selector ကို ထည့်ပါ
+    best_ai_btn = KeyboardButton(text="Best AI Selector", icon_custom_emoji_id="5884289942371401145", style="success")
     pro_btn = KeyboardButton(text="Pro AI Features", icon_custom_emoji_id="5807868868886009920", style="success")
     back_btn = KeyboardButton(text="BACK", icon_custom_emoji_id="5848119413041431362", style="primary")
-    keyboard.append([pro_btn])
+    
+    keyboard.append([best_ai_btn, pro_btn])
     keyboard.append([back_btn])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -617,9 +621,13 @@ async def get_latest_game_result(target_issue, user_tg_id):
     return "? | ?"
 
 # ==========================================================
-# 🧠 GET AI PREDICTION (PSP_AI_PREDICT Version)
+# 🧠 GET AI PREDICTION (API မှ +1 လုပ်ပြီး ထုတ်ပေးမည်)
 # ==========================================================
 async def get_ai_prediction(user_tg_id):
+    """
+    API မှ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူပြီး +1 လုပ်ကာ 
+    Database မှ 9000+ ပွဲစဉ်ဖြင့် AI ခန့်မှန်းချက်ကို ရယူခြင်း။
+    """
     session_data = active_sessions.get(user_tg_id, {})
     if not session_data:
         return None, 0, None, None
@@ -628,134 +636,94 @@ async def get_ai_prediction(user_tg_id):
     token = session_data.get("token")
     type_id = session_data.get("game_type_id", 30)
     
+    # ✅ 1️⃣ API မှ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူမည်
     config = SITE_CONFIGS.get(site)
     url = f"{config['api_url']}/GetNoaverageEmerdList"
-    
-    payload = {'pageSize': 100, 'pageNo': 1, 'typeId': type_id, 'language': 7}
+    payload = {'pageSize': 1, 'pageNo': 1, 'typeId': type_id, 'language': 7}
     headers = get_headers(site, token)
     signed_payload = get_signed_payload(payload)
-
+    
+    last_issue = "0"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=signed_payload) as resp:
-                api_result = await resp.json()
-                records = api_result.get('data', {}).get('list', [])
-                
-        if not records:
-            return None, 0, None, None
-            
-        last_completed_issue = records[0]['issueNumber']
-        next_issue = str(int(last_completed_issue) + 1)
-        
-        for item in records:
-            num = int(item['number'])
-            size_text = "BIG" if num >= 5 else "SMALL"
-            await db.save_game_record(site, type_id, item['issueNumber'], num, size_text)
-        
-        db_records = await db.get_game_history(site, type_id, limit=5000)
-        
-        history_list = []
-        for item in db_records:
-            history_list.append(item['size'])
-        
-        if not history_list:
-            for item in records:
-                num = int(item['number'])
-                size_text = "BIG" if num >= 5 else "SMALL"
-                history_list.append(size_text)
-        
-        from ai_engines import psp_ai_predict
-        
-        result = psp_ai_predict(history_list)
-        
-        predicted_size = result["prediction"]
-        confidence = result["confidence"]
-        reason = result["reason"]
-        display = result["display"]
-        
-        user_ai_name = session_data.get("ai_mode", "PSP_AI_PREDICT")
-        
-        if user_ai_name == "Set Pattern":
-            pat = session_data.get("custom_pattern", ["BIG"])
-            step = session_data.get("custom_pattern_step", 0)
-            target_bet = pat[step]
-            
-            if step == 0:
-                recent_num = int(records[0]['number'])
-                recent_size = "BIG" if recent_num >= 5 else "SMALL"
-                trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
-                if recent_size != trigger_size:
-                    return "wait", 100, next_issue, user_ai_name
-                    
-            return target_bet.lower(), 100, next_issue, user_ai_name
-        
-        elif user_ai_name != "PSP_AI_PREDICT":
-            mode_key = "pattern"
-            for key, val in ai_engines.AI_MODES.items():
-                if val["name"] == user_ai_name:
-                    mode_key = key
-                    break
-            
-            model_acc = session_data.get("model_accuracies", {})
-            predicted_size, _, confidence, _ = ai_engines.get_prediction(
-                history_docs=db_records,
-                mode=mode_key,
-                model_accuracies=model_acc
-            )
-            return predicted_size.lower(), confidence, next_issue, user_ai_name
-        
-        return predicted_size.lower(), confidence, next_issue, user_ai_name
-        
-    except Exception as e:
-        print(f"Prediction Error: {e}")
-        return None, 0, None, None
-
-async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, silent=False):
-    try:
-        session = active_sessions.get(user_tg_id)
-        if not session or "token" not in session:
-            return False
-            
-        site = session["site"]
-        token = session["token"]
-        type_id = session.get("game_type_id", 30)
-        
-        if total_amount >= 10000:
-            base, count = 10000, total_amount // 10000
-        elif total_amount >= 1000:
-            base, count = 1000, total_amount // 1000
-        elif total_amount >= 100:
-            base, count = 100, total_amount // 100
-        else:
-            base, count = 10, total_amount // 10
-            
-        payload = {
-            'typeId': type_id, 
-            'issuenumber': current_issue, 
-            'amount': base, 
-            'betCount': count, 
-            'gameType': 2, 
-            'selectType': get_select_type(bet_type), 
-            'language': 7
-        }
-        
-        config = SITE_CONFIGS.get(site)
-        url = f"{config['api_url']}/GameBetting"
-        headers = get_headers(site, token)
-        signed_payload = get_signed_payload(payload)
-        
         async with aiohttp.ClientSession() as http:
             async with http.post(url, headers=headers, json=signed_payload) as resp:
-                res = await resp.json()
-                
-        if res.get("code") == 0 or res.get("msg") == "success":
-            return True
-        return False
-        
+                api_result = await resp.json()
+                records = api_result.get('data', {}).get('list', [])
+                if records:
+                    # API က နောက်ဆုံးထွက်ပြီးသား Issue ကို ပြန်ပေးမည်
+                    last_issue = str(records[0]['issueNumber'])
     except Exception:
-        return False
+        # API မရရင် Database မှ ယူမည်
+        db_records = await db.get_game_history(site, type_id, limit=1)
+        if db_records:
+            last_issue = str(db_records[0]['issue'])
+    
+    # ✅ 2️⃣ နောက်ထွက်တော့မည့် Issue ကို +1 ဖြင့် ဖန်တီးမည်
+    next_issue = str(int(last_issue) + 1)
+    
+    # ✅ 3️⃣ Database မှ 9000+ ပွဲစဉ်ကို ပြန်ယူမည် (AI အတွက် သမိုင်းကြောင်း)
+    db_records = await db.get_game_history(site, type_id, limit=9000)
+    
+    if not db_records:
+        return None, 0, next_issue, None
+            
+    # ✅ 4️⃣ AI ခန့်မှန်းချက် ရယူခြင်း
+    user_ai_name = session_data.get("ai_mode", "Pattern AI")
+    from ai_engines import get_prediction
+    
+    # 1️⃣ Set Pattern (User Custom Pattern)
+    if user_ai_name == "Set Pattern":
+        pat = session_data.get("custom_pattern", ["BIG"])
+        step = session_data.get("custom_pattern_step", 0)
+        target_bet = pat[step]
+        
+        if step == 0:
+            recent_num = int(db_records[0]['number'])
+            recent_size = "BIG" if recent_num >= 5 else "SMALL"
+            trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
+            if recent_size != trigger_size:
+                return "wait", 100, next_issue, user_ai_name
+                
+        return target_bet.lower(), 100, next_issue, user_ai_name
+        
+    # 2️⃣ Best AI Selector (Auto-Select Best Model based on Win Rate)
+    elif user_ai_name == "Best AI Selector":
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode="best_ai_selector",
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
+        
+    # 3️⃣ Best Pattern Auto-Switch (Dynamic Pattern Switching)
+    elif user_ai_name == "Best Pattern Auto-Switch":
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode="dynamic_best_pattern",
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
+        
+    # 4️⃣ Other AI Models
+    else:
+        mode_key = "pattern"
+        for key, val in ai_engines.AI_MODES.items():
+            if val["name"] == user_ai_name:
+                mode_key = key
+                break
+        
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode=mode_key,
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
 
 def update_model_accuracies(user_tg_id, actual_result_size):
+    """
+    AI Model တစ်ခုချင်းစီရဲ့ Win Rate (Accuracy) ကို Update လုပ်ခြင်း။
+    Online Learning စနစ်။
+    """
     if user_tg_id not in active_sessions:
         return
         
@@ -787,6 +755,7 @@ async def btn_ai_prediction_toggle(message: types.Message):
 @dp.callback_query(F.data == "toggle_aipred")
 async def process_toggle_aipred(callback: types.CallbackQuery):
     user_tg_id = callback.from_user.id
+    
     if user_tg_id not in active_sessions:
         await callback.answer("Session Expired.")
         return
@@ -817,6 +786,9 @@ async def prediction_broadcast_loop(user_tg_id, message: types.Message):
             last_issue = active_sessions[user_tg_id].get("last_predicted_issue")
             gn = active_sessions[user_tg_id].get("game_type_name", "WINGO_30S")
 
+            # ✅ get_ai_prediction က +1 ပြီးသား Issue ကို ထုတ်ပေးပြီးမို့ display_issue = issue ထားမယ်
+            display_issue = issue
+
             if issue and issue != last_issue:
                 if gn == "WINGO_1M":
                     await asyncio.sleep(30)
@@ -832,7 +804,7 @@ async def prediction_broadcast_loop(user_tg_id, message: types.Message):
                 txt = (
                     f"<blockquote>\n"
                     f"☉ Ai Prediction - Live\n"
-                    f"☉ {gn} : <code>{issue}</code>\n"
+                    f"☉ {gn} : <code>{display_issue}</code>\n"
                     f"☉ Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
                     f"☉ Status : Waiting...\n"
                     f"</blockquote>"
@@ -851,7 +823,7 @@ async def prediction_broadcast_loop(user_tg_id, message: types.Message):
                     if not active_sessions.get(user_tg_id, {}).get("is_ai_prediction_enabled", False):
                         break
                     await asyncio.sleep(1)
-                    res = await get_latest_game_result(issue, user_tg_id)
+                    res = await get_latest_game_result(display_issue, user_tg_id)
                     if res != "? | ?":
                         break
                 
@@ -881,7 +853,7 @@ async def prediction_broadcast_loop(user_tg_id, message: types.Message):
                     ftxt = (
                         f"<blockquote>\n"
                         f"☉ Ai Prediction - Live\n"
-                        f"☉ {gn} : <code>{issue}</code>\n"
+                        f"☉ {gn} : <code>{display_issue}</code>\n"
                         f"☉ Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
                         f"☉ Status : {stat}\n"
                         f"</blockquote>"
@@ -921,10 +893,14 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
         try:
             pred, _, issue, ai_name = await get_ai_prediction(user_tg_id)
             
+            # ✅ get_ai_prediction က နောက်ထွက်တော့မယ့် issue ကို ထုတ်ပေးပြီးသားမို့ issue ကို တိုက်ရိုက်သုံးမယ်။
             if issue and issue != last_issue:
+                # game_type ပေါ်မူတည်ပြီး စောင့်ချိန်တွက်ခြင်း
                 if gn == "WINGO_1M":
                     await asyncio.sleep(30)
-                    
+                elif gn == "WINGO_30S":
+                    await asyncio.sleep(10)
+                
                 if pred == "wait":
                     msg_txt = (
                         f"<blockquote>\n"
@@ -1015,7 +991,7 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
                 last_issue = issue
                 await asyncio.sleep(7) 
 
-                # ✅ FIX: Virtual Mode မှာ Random မသုံးတော့ပါ။ API Real Data ကိုသာ စောင့်ယူမည်။
+                # ✅ Virtual Mode မှာ Real API Data ကိုသာ စောင့်ယူမည်
                 if is_virtual:
                     res = await get_latest_game_result(issue, user_tg_id)
                     for _ in range(45):
@@ -1145,6 +1121,51 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
         except Exception as e:
             print(f"Loop Error: {e}")
             await asyncio.sleep(5)
+
+async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, silent=False):
+    try:
+        session = active_sessions.get(user_tg_id)
+        if not session or "token" not in session:
+            return False
+            
+        site = session["site"]
+        token = session["token"]
+        type_id = session.get("game_type_id", 30)
+        
+        if total_amount >= 10000:
+            base, count = 10000, total_amount // 10000
+        elif total_amount >= 1000:
+            base, count = 1000, total_amount // 1000
+        elif total_amount >= 100:
+            base, count = 100, total_amount // 100
+        else:
+            base, count = 10, total_amount // 10
+            
+        payload = {
+            'typeId': type_id, 
+            'issuenumber': current_issue, 
+            'amount': base, 
+            'betCount': count, 
+            'gameType': 2, 
+            'selectType': get_select_type(bet_type), 
+            'language': 7
+        }
+        
+        config = SITE_CONFIGS.get(site)
+        url = f"{config['api_url']}/GameBetting"
+        headers = get_headers(site, token)
+        signed_payload = get_signed_payload(payload)
+        
+        async with aiohttp.ClientSession() as http:
+            async with http.post(url, headers=headers, json=signed_payload) as resp:
+                res = await resp.json()
+                
+        if res.get("code") == 0 or res.get("msg") == "success":
+            return True
+        return False
+        
+    except Exception:
+        return False
 
 # ==========================================================
 # 🎯 Feature Handlers
