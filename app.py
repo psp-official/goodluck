@@ -1,3 +1,4 @@
+# bot.py
 import asyncio
 import os
 import html
@@ -223,7 +224,7 @@ class AuthMiddleware(BaseMiddleware):
             
             if not is_authorized:
                 if isinstance(event, types.Message):
-                    await event.answer("ᴄᴏɴᴛᴀᴄᴛ ᴜꜱ @iwillgoforwardsalone")
+                    await event.answer("Contact @iwillgoforwardsalone")
                 elif isinstance(event, types.CallbackQuery):
                     await event.answer("အသုံးပြုခွင့် သက်တမ်းကုန်သွားပါပြီ။", show_alert=True)
                 return 
@@ -298,7 +299,7 @@ def get_cancel_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Cancel")]], resize_keyboard=True)
 
 def get_ai_mode_keyboard():
-    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai"]
+    standard_modes = [m for k, m in AI_MODES.items() if not k.startswith("pro_") and k != "babathapai" and k != "best_ai_selector"]
     keyboard = []
     row = []
     
@@ -313,9 +314,12 @@ def get_ai_mode_keyboard():
     if row:
         keyboard.append(row)
         
+    # ✅ Best AI Selector ကို ထည့်ပါ
+    best_ai_btn = KeyboardButton(text="Best AI Selector", icon_custom_emoji_id="5884289942371401145", style="success")
     pro_btn = KeyboardButton(text="Pro AI Features", icon_custom_emoji_id="5807868868886009920", style="success")
     back_btn = KeyboardButton(text="BACK", icon_custom_emoji_id="5848119413041431362", style="primary")
-    keyboard.append([pro_btn])
+    
+    keyboard.append([best_ai_btn, pro_btn])
     keyboard.append([back_btn])
     
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -596,7 +600,7 @@ async def get_latest_game_result(target_issue, user_tg_id):
     config = SITE_CONFIGS.get(site)
     url = f"{config['api_url']}/GetNoaverageEmerdList"
     
-    payload = {'pageSize': 10, 'pageNo': 1, 'typeId': type_id, 'language': 7}
+    payload = {'pageSize': 100, 'pageNo': 1, 'typeId': type_id, 'language': 7}
     headers = get_headers(site, token)
     signed_payload = get_signed_payload(payload)
     
@@ -617,13 +621,12 @@ async def get_latest_game_result(target_issue, user_tg_id):
     return "? | ?"
 
 # ==========================================================
-# 🧠 GET AI PREDICTION (PSP_AI_PREDICT Version)
+# 🧠 GET AI PREDICTION (API မှ +1 လုပ်ပြီး ထုတ်ပေးမည်)
 # ==========================================================
 async def get_ai_prediction(user_tg_id):
     """
-    PSP_AI_PREDICT ကို အသုံးပြု၍ ခန့်မှန်းချက် ရယူခြင်း
-    - Database မှ နောက်ဆုံး 5000 ပွဲစာကို ဆွဲယူမည်
-    - Pattern အလိုက် ခန့်မှန်းချက် ထုတ်ပေးမည်
+    API မှ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူပြီး +1 လုပ်ကာ 
+    Database မှ 9000+ ပွဲစဉ်ဖြင့် AI ခန့်မှန်းချက်ကို ရယူခြင်း။
     """
     session_data = active_sessions.get(user_tg_id, {})
     if not session_data:
@@ -633,112 +636,491 @@ async def get_ai_prediction(user_tg_id):
     token = session_data.get("token")
     type_id = session_data.get("game_type_id", 30)
     
+    # ✅ 1️⃣ API မှ နောက်ဆုံးထွက်ပြီးသား Issue ကို ရယူမည်
     config = SITE_CONFIGS.get(site)
     url = f"{config['api_url']}/GetNoaverageEmerdList"
-    
-    # ==========================================================
-    # 1️⃣ API မှ နောက်ဆုံးပွဲစဉ် ရယူခြင်း (နောက်ပွဲစဉ် သိရန်)
-    # ==========================================================
-    payload = {'pageSize': 1000, 'pageNo': 1, 'typeId': type_id, 'language': 7}
+    payload = {'pageSize': 1, 'pageNo': 1, 'typeId': type_id, 'language': 7}
     headers = get_headers(site, token)
     signed_payload = get_signed_payload(payload)
-
+    
+    last_issue = "0"
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=signed_payload) as resp:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(url, headers=headers, json=signed_payload) as resp:
                 api_result = await resp.json()
                 records = api_result.get('data', {}).get('list', [])
+                if records:
+                    # API က နောက်ဆုံးထွက်ပြီးသား Issue ကို ပြန်ပေးမည်
+                    last_issue = str(records[0]['issueNumber'])
+    except Exception:
+        # API မရရင် Database မှ ယူမည်
+        db_records = await db.get_game_history(site, type_id, limit=1)
+        if db_records:
+            last_issue = str(db_records[0]['issue'])
+    
+    # ✅ 2️⃣ နောက်ထွက်တော့မည့် Issue ကို +1 ဖြင့် ဖန်တီးမည်
+    next_issue = str(int(last_issue) + 1)
+    
+    # ✅ 3️⃣ Database မှ 9000+ ပွဲစဉ်ကို ပြန်ယူမည် (AI အတွက် သမိုင်းကြောင်း)
+    db_records = await db.get_game_history(site, type_id, limit=9000)
+    
+    if not db_records:
+        return None, 0, next_issue, None
+            
+    # ✅ 4️⃣ AI ခန့်မှန်းချက် ရယူခြင်း
+    user_ai_name = session_data.get("ai_mode", "Pattern AI")
+    from ai_engines import get_prediction
+    
+    # 1️⃣ Set Pattern (User Custom Pattern)
+    if user_ai_name == "Set Pattern":
+        pat = session_data.get("custom_pattern", ["BIG"])
+        step = session_data.get("custom_pattern_step", 0)
+        target_bet = pat[step]
+        
+        if step == 0:
+            recent_num = int(db_records[0]['number'])
+            recent_size = "BIG" if recent_num >= 5 else "SMALL"
+            trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
+            if recent_size != trigger_size:
+                return "wait", 100, next_issue, user_ai_name
                 
-        if not records:
-            return None, 0, None, None
-            
-        # နောက်ဆုံးထွက်ပွဲနှင့် နောက်ပွဲစဉ်
-        last_completed_issue = records[0]['issueNumber']
-        next_issue = str(int(last_completed_issue) + 1)
+        return target_bet.lower(), 100, next_issue, user_ai_name
         
-        # ==========================================================
-        # 2️⃣ Database ထဲသို့ ရလဒ်အသစ်များ သိမ်းဆည်းခြင်း
-        # ==========================================================
-        for item in records:
-            num = int(item['number'])
-            size_text = "BIG" if num >= 5 else "SMALL"
-            await db.save_game_record(site, type_id, item['issueNumber'], num, size_text)
-        
-        # ==========================================================
-        # 3️⃣ Database မှ သမိုင်းကြောင်း (History) ဆွဲယူခြင်း
-        # ==========================================================
-        db_records = await db.get_game_history(site, type_id, limit=5000)
-        
-        # History list ကို ပြင်ဆင်ခြင်း (နောက်ဆုံးထွက်ပွဲမှ စ၍)
-        history_list = []
-        for item in db_records:
-            history_list.append(item['size'])
-        
-        # Database မှ ဒေတာမရပါက API မှရထားသော ဒေတာကို သုံးမည်
-        if not history_list:
-            for item in records:
-                num = int(item['number'])
-                size_text = "BIG" if num >= 5 else "SMALL"
-                history_list.append(size_text)
-        
-        # ==========================================================
-        # 4️⃣ PSP_AI_PREDICT ကို ခေါ်သုံးခြင်း
-        # ==========================================================
-        # AI Engine မှ pattern prediction ကို ရယူခြင်း
-        from ai_engines import psp_ai_predict
-        
-        result = psp_ai_predict(history_list)
-        
-        predicted_size = result["prediction"]  # "BIG" or "SMALL"
-        confidence = result["confidence"]      # 55.0 - 85.0
-        reason = result["reason"]              # အကြောင်းပြချက်
-        display = result["display"]            # "BIG (အကြီး) 🔴" or "SMALL (အသေး) 🟢"
-        
-        # ==========================================================
-        # 5️⃣ AI Mode အလိုက် ခန့်မှန်းချက် (Default အနေဖြင့် PSP_AI_PREDICT သုံးမည်)
-        # ==========================================================
-        user_ai_name = session_data.get("ai_mode", "PSP_AI_PREDICT")
-        
-        # Set Pattern ဆိုပါက user သတ်မှတ်ထားသော pattern ကို သုံးမည်
-        if user_ai_name == "Set Pattern":
-            pat = session_data.get("custom_pattern", ["BIG"])
-            step = session_data.get("custom_pattern_step", 0)
-            target_bet = pat[step]
-            
-            if step == 0:
-                recent_num = int(records[0]['number'])
-                recent_size = "BIG" if recent_num >= 5 else "SMALL"
-                trigger_size = "SMALL" if target_bet == "BIG" else "BIG"
-                if recent_size != trigger_size:
-                    return "wait", 100, next_issue, user_ai_name
-                    
-            return target_bet.lower(), 100, next_issue, user_ai_name
-        
-        # ကျန်သော AI Modes များအတွက် ai_engines.py မှ ရယူမည်
-        elif user_ai_name != "PSP_AI_PREDICT":
-            mode_key = "pattern"
-            for key, val in ai_engines.AI_MODES.items():
-                if val["name"] == user_ai_name:
-                    mode_key = key
-                    break
-            
-            # Model အစစ်ခေါ်ယူခြင်း
-            model_acc = session_data.get("model_accuracies", {})
-            predicted_size, _, confidence, _ = ai_engines.get_prediction(
-                history_docs=db_records,  # ဒေတာကို doc format အတိုင်း ပေးရန်
-                mode=mode_key,
-                model_accuracies=model_acc
-            )
-            return predicted_size.lower(), confidence, next_issue, user_ai_name
-        
-        # ==========================================================
-        # 6️⃣ PSP_AI_PREDICT ရလဒ်ကို ပြန်ပေးခြင်း
-        # ==========================================================
+    # 2️⃣ Best AI Selector (Auto-Select Best Model based on Win Rate)
+    elif user_ai_name == "Best AI Selector":
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode="best_ai_selector",
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
         return predicted_size.lower(), confidence, next_issue, user_ai_name
         
-    except Exception as e:
-        print(f"Prediction Error: {e}")
-        return None, 0, None, None
+    # 3️⃣ Best Pattern Auto-Switch (Dynamic Pattern Switching)
+    elif user_ai_name == "Best Pattern Auto-Switch":
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode="dynamic_best_pattern",
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
+        
+    # 4️⃣ Other AI Models
+    else:
+        mode_key = "pattern"
+        for key, val in ai_engines.AI_MODES.items():
+            if val["name"] == user_ai_name:
+                mode_key = key
+                break
+        
+        predicted_size, _, confidence, _ = get_prediction(
+            history_docs=db_records,
+            mode=mode_key,
+            model_accuracies=session_data.get("model_accuracies", {})
+        )
+        return predicted_size.lower(), confidence, next_issue, user_ai_name
+
+def update_model_accuracies(user_tg_id, actual_result_size):
+    """
+    AI Model တစ်ခုချင်းစီရဲ့ Win Rate (Accuracy) ကို Update လုပ်ခြင်း။
+    Online Learning စနစ်။
+    """
+    if user_tg_id not in active_sessions:
+        return
+        
+    session = active_sessions[user_tg_id]
+    if "model_accuracies" not in session:
+        session["model_accuracies"] = {}
+        
+    active_ai = session.get("ai_mode")
+    last_pred = session.get("last_prediction_value")
+    
+    if last_pred and actual_result_size and last_pred != "wait" and actual_result_size != "?":
+        is_win = (last_pred.lower() == actual_result_size.lower())
+        current_acc = session["model_accuracies"].get(active_ai, 0.5)
+        new_acc = (current_acc * 0.8) + (1.0 if is_win else 0.0) * 0.2
+        session["model_accuracies"][active_ai] = new_acc
+
+# ==========================================================
+# 🔮 AI Loops & Features
+# ==========================================================
+@dp.message(F.text == TEXT_PREDICT)
+async def btn_ai_prediction_toggle(message: types.Message):
+    if message.from_user.id not in active_sessions:
+        await message.answer("Login ဝင်ပေးပါ။")
+        return
+        
+    is_enabled = active_sessions[message.from_user.id].get("is_ai_prediction_enabled", False)
+    await message.answer("AI Prediction Broadcast", reply_markup=get_ai_prediction_toggle_keyboard(is_enabled))
+
+@dp.callback_query(F.data == "toggle_aipred")
+async def process_toggle_aipred(callback: types.CallbackQuery):
+    user_tg_id = callback.from_user.id
+    
+    if user_tg_id not in active_sessions:
+        await callback.answer("Session Expired.")
+        return
+        
+    new_state = not active_sessions[user_tg_id].get("is_ai_prediction_enabled", False)
+    active_sessions[user_tg_id]["is_ai_prediction_enabled"] = new_state
+    
+    await callback.message.edit_reply_markup(reply_markup=get_ai_prediction_toggle_keyboard(new_state))
+    if new_state:
+        asyncio.create_task(prediction_broadcast_loop(user_tg_id, callback.message))
+
+async def prediction_broadcast_loop(user_tg_id, message: types.Message):
+    if "current_win_streak" not in active_sessions.get(user_tg_id, {}):
+        active_sessions[user_tg_id].update({
+            "current_win_streak": 0, 
+            "current_lose_streak": 0, 
+            "longest_win_streak": 0, 
+            "longest_lose_streak": 0
+        })
+        
+    while active_sessions.get(user_tg_id, {}).get("is_ai_prediction_enabled", False):
+        try:
+            pred, conf, issue, ai_name = await get_ai_prediction(user_tg_id)
+            if pred == "wait":
+                await asyncio.sleep(2)
+                continue
+                
+            last_issue = active_sessions[user_tg_id].get("last_predicted_issue")
+            gn = active_sessions[user_tg_id].get("game_type_name", "WINGO_30S")
+
+            # ✅ get_ai_prediction က +1 ပြီးသား Issue ကို ထုတ်ပေးပြီးမို့ display_issue = issue ထားမယ်
+            display_issue = issue
+
+            if issue and issue != last_issue:
+                if gn == "WINGO_1M":
+                    await asyncio.sleep(30)
+                elif gn == "WINGO_30S":
+                    await asyncio.sleep(10)
+                    
+                active_sessions[user_tg_id]["last_predicted_issue"] = issue
+                active_sessions[user_tg_id]["last_prediction_value"] = pred
+                
+                lw = active_sessions[user_tg_id]["longest_win_streak"]
+                ll = active_sessions[user_tg_id]["longest_lose_streak"]
+                
+                txt = (
+                    f"<blockquote>\n"
+                    f"☉ Ai Prediction - Live\n"
+                    f"☉ {gn} : <code>{display_issue}</code>\n"
+                    f"☉ Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
+                    f"☉ Status : Waiting...\n"
+                    f"</blockquote>"
+                )
+                pred_msg = await message.answer(txt)
+                
+                ch_msg_id = None
+                if active_sessions[user_tg_id].get("upload_channel") and CHANNEL_ID:
+                    ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=txt)
+                    ch_msg_id = ch_msg.message_id
+                
+                res = "? | ?"
+                wait_limit = 60 if gn == "WINGO_1M" else 30
+                
+                for _ in range(wait_limit):
+                    if not active_sessions.get(user_tg_id, {}).get("is_ai_prediction_enabled", False):
+                        break
+                    await asyncio.sleep(1)
+                    res = await get_latest_game_result(display_issue, user_tg_id)
+                    if res != "? | ?":
+                        break
+                
+                if res != "? | ?":
+                    actual = res.split(" | ")[1].strip().lower()
+                    update_model_accuracies(user_tg_id, actual)
+                    
+                    if pred.lower() == actual:
+                        stat = f"✔WIN{res}"
+                        active_sessions[user_tg_id]["current_win_streak"] += 1
+                        active_sessions[user_tg_id]["current_lose_streak"] = 0
+                        new_max_win = max(active_sessions[user_tg_id]["longest_win_streak"], active_sessions[user_tg_id]["current_win_streak"])
+                        active_sessions[user_tg_id]["longest_win_streak"] = new_max_win
+                    else:
+                        stat = f"✖LOSE{res}"
+                        active_sessions[user_tg_id]["current_lose_streak"] += 1
+                        active_sessions[user_tg_id]["current_win_streak"] = 0
+                        new_max_lose = max(active_sessions[user_tg_id]["longest_lose_streak"], active_sessions[user_tg_id]["current_lose_streak"])
+                        active_sessions[user_tg_id]["longest_lose_streak"] = new_max_lose
+                else:
+                    stat = "DRAW"
+                
+                lw = active_sessions[user_tg_id]["longest_win_streak"]
+                ll = active_sessions[user_tg_id]["longest_lose_streak"]
+                
+                try:
+                    ftxt = (
+                        f"<blockquote>\n"
+                        f"☉ Ai Prediction - Live\n"
+                        f"☉ {gn} : <code>{display_issue}</code>\n"
+                        f"☉ Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
+                        f"☉ Status : {stat}\n"
+                        f"</blockquote>"
+                    )
+                    await pred_msg.edit_text(ftxt)
+                    if ch_msg_id:
+                        await bot.edit_message_text(chat_id=CHANNEL_ID, message_id=ch_msg_id, text=ftxt)
+                except Exception:
+                    pass
+                    
+            await asyncio.sleep(2)
+        except Exception:
+            await asyncio.sleep(5)
+
+async def auto_bet_loop(user_tg_id, message: types.Message):
+    await message.answer("🚀 Auto-Bet စတင်ပါပြီ! 🛑 Stop Auto-Bet ဖြင့် ရပ်တန့်ပါ။")
+    
+    last_issue = None
+    session = active_sessions[user_tg_id]
+    is_virtual = session.get("is_virtual_mode", False)
+    gn = session.get("game_type_name", "WINGO_30S")
+    
+    current_win_streak = 0
+    current_lose_streak = 0
+    longest_win_streak = 0
+    longest_lose_streak = 0
+    total_bets = 0
+    total_wins = 0
+    total_losses = 0
+    
+    if not is_virtual:
+        site_config = SITE_CONFIGS.get(session['site'])
+        bal_url = f"{site_config['api_url']}/GetBalance"
+        bal_headers = get_headers(session["site"], session["token"])
+
+    while active_sessions.get(user_tg_id, {}).get("is_auto_betting", False):
+        try:
+            pred, _, issue, ai_name = await get_ai_prediction(user_tg_id)
+            
+            # ✅ get_ai_prediction က နောက်ထွက်တော့မယ့် issue ကို ထုတ်ပေးပြီးသားမို့ issue ကို တိုက်ရိုက်သုံးမယ်။
+            if issue and issue != last_issue:
+                # game_type ပေါ်မူတည်ပြီး စောင့်ချိန်တွက်ခြင်း
+                if gn == "WINGO_1M":
+                    await asyncio.sleep(30)
+                elif gn == "WINGO_30S":
+                    await asyncio.sleep(10)
+                
+                if pred == "wait":
+                    msg_txt = (
+                        f"<blockquote>\n"
+                        f"☉ Trigger စောင့်နေပါသည်\n"
+                        f"☉ {gn} : <code>{issue}</code>\n"
+                        f"</blockquote>"
+                    )
+                    msg = await message.answer(msg_txt)
+                    last_issue = issue
+                    asyncio.create_task(delete_message_later(msg, 7))
+                    await asyncio.sleep(2)
+                    continue 
+                    
+                hw = session.get("hit_wait", 0)
+                cm = session.get("current_misses", 0)
+                
+                if hw > 0 and cm < hw:
+                    hit_txt = (
+                        f"<blockquote>\n"
+                        f"☉ Hit Wait: {cm}/{hw}\n"
+                        f"☉ {gn} : <code>{issue}</code>\n"
+                        f"☉ Pred: {pred.upper()}\n"
+                        f"</blockquote>"
+                    )
+                    msg = await message.answer(hit_txt)
+                    
+                    res = "? | ?"
+                    for _ in range(45):
+                        if not active_sessions.get(user_tg_id, {}).get("is_auto_betting"):
+                            break
+                        await asyncio.sleep(2)
+                        res = await get_latest_game_result(issue, user_tg_id)
+                        if res != "? | ?":
+                            break
+                            
+                    try:
+                        actual = res.split(" | ")[1].strip().lower()
+                        update_model_accuracies(user_tg_id, actual)
+                        
+                        if pred.lower() == actual:
+                            active_sessions[user_tg_id]["current_misses"] = 0
+                            await msg.edit_text(f"AI အမှန်ခန့်မှန်း (Reset)\nResult: {res}")
+                        elif actual != "?": 
+                            active_sessions[user_tg_id]["current_misses"] += 1
+                            if active_sessions[user_tg_id]["current_misses"] >= hw:
+                                await msg.edit_text("🎯 Target Reached!")
+                            else:
+                                await msg.edit_text(f"❌ Loss: {active_sessions[user_tg_id]['current_misses']}/{hw}")
+                                
+                        asyncio.create_task(delete_message_later(msg, 5)) 
+                    except Exception:
+                        pass
+                        
+                    last_issue = issue
+                    await asyncio.sleep(2)
+                    continue 
+
+                seq = session.get("bet_sequence", [10])
+                step = session.get("current_bet_step", 0)
+                if step >= len(seq):
+                    step = 0
+                amt = seq[step]
+
+                if is_virtual:
+                    c_bal = session.get("virtual_balance", 0.0)
+                else:
+                    async with aiohttp.ClientSession() as http:
+                        payload = get_signed_payload({'language': 7})
+                        async with http.post(bal_url, headers=bal_headers, json=payload) as resp:
+                            bal_data = (await resp.json()).get("data", {})
+                            c_bal_raw = bal_data.get("balance", bal_data.get("amount", 0.0)) if isinstance(bal_data, dict) else bal_data
+                            c_bal = float(c_bal_raw)
+                
+                if c_bal < amt:
+                    await message.answer("လက်ကျန်ငွေမလုံလောက်ပါ။")
+                    active_sessions[user_tg_id]["is_auto_betting"] = False
+                    break
+
+                active_sessions[user_tg_id]["last_prediction_value"] = pred
+                bet_txt = (
+                    f"<blockquote>\n"
+                    f"☉ {gn} : <code>{issue}</code>\n"
+                    f"☉ {ai_name}\n"
+                    f"☉ Pred: <b>{pred.upper()}</b> | {amt} Ks\n"
+                    f"</blockquote>"
+                )
+                await message.answer(bet_txt)
+                last_issue = issue
+                await asyncio.sleep(7) 
+
+                # ✅ Virtual Mode မှာ Real API Data ကိုသာ စောင့်ယူမည်
+                if is_virtual:
+                    res = await get_latest_game_result(issue, user_tg_id)
+                    for _ in range(45):
+                        if not active_sessions.get(user_tg_id, {}).get("is_auto_betting"):
+                            break 
+                        if res != "? | ?":
+                            break
+                        await asyncio.sleep(2)
+                        res = await get_latest_game_result(issue, user_tg_id)
+                else: 
+                    success = await place_auto_bet(user_tg_id, issue, pred, amt, True)
+                    if not success:
+                        await asyncio.sleep(5)
+                        continue
+                        
+                    res = "? | ?"
+                    for _ in range(45):
+                        if not active_sessions.get(user_tg_id, {}).get("is_auto_betting"):
+                            break 
+                        await asyncio.sleep(2)
+                        res = await get_latest_game_result(issue, user_tg_id)
+                        if res != "? | ?":
+                            break 
+                
+                if is_virtual:
+                    try:
+                        actual_str = res.split(" | ")[1].strip().lower()
+                        if pred.lower() == actual_str:
+                            session["virtual_balance"] += amt * 0.96
+                        else:
+                            session["virtual_balance"] -= amt
+                        n_bal = session["virtual_balance"]
+                        await db.update_virtual_balance(user_tg_id, n_bal)
+                    except Exception:
+                        pass
+                else:
+                    async with aiohttp.ClientSession() as http:
+                        payload = get_signed_payload({'language': 7})
+                        async with http.post(bal_url, headers=bal_headers, json=payload) as resp:
+                            bal_data = (await resp.json()).get("data", {})
+                            n_bal_raw = bal_data.get("balance", bal_data.get("amount", 0.0)) if isinstance(bal_data, dict) else bal_data
+                            n_bal = float(n_bal_raw)
+
+                try:
+                    actual = res.split(" | ")[1].strip().lower() 
+                    update_model_accuracies(user_tg_id, actual)
+                    
+                    total_bets += 1
+                    
+                    if pred.lower() == actual:
+                        prof = amt * 0.96
+                        stat = f"☉ <b>WIN</b> ✔ +{prof} Ks"
+                        
+                        if is_virtual:
+                            session["virtual_session_profit"] += prof
+                        else:
+                            active_sessions[user_tg_id]["session_profit"] += prof
+                            
+                        active_sessions[user_tg_id]["current_bet_step"] = 0
+                        active_sessions[user_tg_id]["current_misses"] = 0
+                        
+                        current_win_streak += 1
+                        current_lose_streak = 0
+                        total_wins += 1
+                        
+                        if current_win_streak > longest_win_streak:
+                            longest_win_streak = current_win_streak
+                        
+                    elif actual == "?":
+                        stat = "⚙️ DRAW (Pending)"
+                    else:
+                        stat = f"☉ <b>LOSE</b> ✖ {amt} Ks"
+                        
+                        if is_virtual:
+                            session["virtual_session_profit"] -= amt
+                        else:
+                            active_sessions[user_tg_id]["session_profit"] -= amt
+                            
+                        active_sessions[user_tg_id]["current_bet_step"] = (step + 1) % len(seq)
+                        
+                        current_lose_streak += 1
+                        current_win_streak = 0
+                        total_losses += 1
+                        
+                        if current_lose_streak > longest_lose_streak:
+                            longest_lose_streak = current_lose_streak
+                        
+                    if ai_name == "Set Pattern" and actual != "?":
+                        current_c_step = session.get("custom_pattern_step", 0)
+                        pat_len = len(session.get("custom_pattern", ["BIG"]))
+                        active_sessions[user_tg_id]["custom_pattern_step"] = (current_c_step + 1) % pat_len
+                        
+                    if is_virtual:
+                        c_prof = session.get("virtual_session_profit", 0.0)
+                    else:
+                        c_prof = active_sessions[user_tg_id].get("session_profit", 0.0)
+                    
+                    win_rate = (total_wins / total_bets) * 100 if total_bets > 0 else 0.0
+                    
+                    result_txt = (
+                        f"<blockquote>\n"
+                        f"{stat}\n"
+                        f"───────────────\n"
+                        f"☉ {gn} : <code>{issue}</code>\n"
+                        f"☉ Result: <code>{res}</code>\n"
+                        f"☉ Bal: K{n_bal:,.2f} 〔{longest_win_streak} | {longest_lose_streak}〕\n"
+                        f"☉ Total Profit: {c_prof:,.2f} Ks\n"
+                        f"</blockquote>"
+                    )
+                    
+                    await message.answer(result_txt)
+                    
+                    if not is_virtual:
+                        await db.update_user_balance(user_tg_id, f"{n_bal:.2f} Ks")
+                        
+                    profit_target = session.get("profit_target", 0)
+                    if profit_target > 0 and c_prof >= profit_target:
+                        await message.answer("🎉 Target ပြည့်ပါပြီ။ Stop.")
+                        active_sessions[user_tg_id]["is_auto_betting"] = False
+                        break
+                        
+                except Exception:
+                    pass
+            else:
+                await asyncio.sleep(5) 
+                
+        except Exception as e:
+            print(f"Loop Error: {e}")
+            await asyncio.sleep(5)
 
 async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, silent=False):
     try:
@@ -784,400 +1166,6 @@ async def place_auto_bet(user_tg_id, current_issue, bet_type, total_amount=10, s
         
     except Exception:
         return False
-
-def update_model_accuracies(user_tg_id, actual_result_size):
-    if user_tg_id not in active_sessions:
-        return
-        
-    session = active_sessions[user_tg_id]
-    if "model_accuracies" not in session:
-        session["model_accuracies"] = {}
-        
-    active_ai = session.get("ai_mode")
-    last_pred = session.get("last_prediction_value")
-    
-    if last_pred and actual_result_size and last_pred != "wait" and actual_result_size != "?":
-        is_win = (last_pred.lower() == actual_result_size.lower())
-        current_acc = session["model_accuracies"].get(active_ai, 0.5)
-        new_acc = (current_acc * 0.8) + (1.0 if is_win else 0.0) * 0.2
-        session["model_accuracies"][active_ai] = new_acc
-
-# ==========================================================
-# 🔮 AI Loops & Features
-# ==========================================================
-@dp.message(F.text == TEXT_PREDICT)
-async def btn_ai_prediction_toggle(message: types.Message):
-    if message.from_user.id not in active_sessions:
-        await message.answer("Login ဝင်ပေးပါ။")
-        return
-        
-    is_enabled = active_sessions[message.from_user.id].get("is_ai_prediction_enabled", False)
-    await message.answer("AI Prediction Broadcast", reply_markup=get_ai_prediction_toggle_keyboard(is_enabled))
-
-@dp.callback_query(F.data == "toggle_aipred")
-async def process_toggle_aipred(callback: types.CallbackQuery):
-    user_tg_id = callback.from_user.id
-    if user_tg_id not in active_sessions:
-        await callback.answer("Session Expired.")
-        return
-        
-    new_state = not active_sessions[user_tg_id].get("is_ai_prediction_enabled", False)
-    active_sessions[user_tg_id]["is_ai_prediction_enabled"] = new_state
-    
-    await callback.message.edit_reply_markup(reply_markup=get_ai_prediction_toggle_keyboard(new_state))
-    if new_state:
-        asyncio.create_task(prediction_broadcast_loop(user_tg_id, callback.message))
-
-async def prediction_broadcast_loop(user_tg_id, message: types.Message):
-    if "current_win_streak" not in active_sessions.get(user_tg_id, {}):
-        active_sessions[user_tg_id].update({
-            "current_win_streak": 0, 
-            "current_lose_streak": 0, 
-            "longest_win_streak": 0, 
-            "longest_lose_streak": 0
-        })
-        
-    while active_sessions.get(user_tg_id, {}).get("is_ai_prediction_enabled", False):
-        try:
-            pred, conf, issue, ai_name = await get_ai_prediction(user_tg_id)
-            if pred == "wait":
-                await asyncio.sleep(2)
-                continue
-                
-            last_issue = active_sessions[user_tg_id].get("last_predicted_issue")
-            gn = active_sessions[user_tg_id].get("game_type_name", "WINGO_30S")
-
-            if issue and issue != last_issue:
-                if gn == "WINGO_1M":
-                    await asyncio.sleep(30)
-                elif gn == "WINGO_30S":
-                    await asyncio.sleep(5)
-                    
-                active_sessions[user_tg_id]["last_predicted_issue"] = issue
-                active_sessions[user_tg_id]["last_prediction_value"] = pred
-                
-                lw = active_sessions[user_tg_id]["longest_win_streak"]
-                ll = active_sessions[user_tg_id]["longest_lose_streak"]
-                
-                txt = (
-                    f"<blockquote>\n"
-                    f"{P_1} Ai Prediction - Live\n"
-                    f"{P_2} {gn} : <code>{issue}</code>\n"
-                    f"{P_3} Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
-                    f"{P_4} Status : Waiting...\n"
-                    f"</blockquote>"
-                )
-                pred_msg = await message.answer(txt)
-                
-                ch_msg_id = None
-                if active_sessions[user_tg_id].get("upload_channel") and CHANNEL_ID:
-                    ch_msg = await bot.send_message(chat_id=CHANNEL_ID, text=txt)
-                    ch_msg_id = ch_msg.message_id
-                
-                res = "? | ?"
-                wait_limit = 60 if gn == "WINGO_1M" else 30
-                
-                for _ in range(wait_limit):
-                    if not active_sessions.get(user_tg_id, {}).get("is_ai_prediction_enabled", False):
-                        break
-                    await asyncio.sleep(1)
-                    res = await get_latest_game_result(issue, user_tg_id)
-                    if res != "? | ?":
-                        break
-                
-                if res != "? | ?":
-                    actual = res.split(" | ")[1].strip().lower()
-                    update_model_accuracies(user_tg_id, actual)
-                    
-                    if pred.lower() == actual:
-                        stat = f"{P_5}WIN{res}"
-                        active_sessions[user_tg_id]["current_win_streak"] += 1
-                        active_sessions[user_tg_id]["current_lose_streak"] = 0
-                        new_max_win = max(active_sessions[user_tg_id]["longest_win_streak"], active_sessions[user_tg_id]["current_win_streak"])
-                        active_sessions[user_tg_id]["longest_win_streak"] = new_max_win
-                    else:
-                        stat = f"{P_6} LOSE{res}"
-                        active_sessions[user_tg_id]["current_lose_streak"] += 1
-                        active_sessions[user_tg_id]["current_win_streak"] = 0
-                        new_max_lose = max(active_sessions[user_tg_id]["longest_lose_streak"], active_sessions[user_tg_id]["current_lose_streak"])
-                        active_sessions[user_tg_id]["longest_lose_streak"] = new_max_lose
-                else:
-                    stat = "⚖️ DRAW"
-                
-                lw = active_sessions[user_tg_id]["longest_win_streak"]
-                ll = active_sessions[user_tg_id]["longest_lose_streak"]
-                
-                try:
-                    ftxt = (
-                        f"<blockquote>\n"
-                        f"{P_1} Ai Prediction - Live\n"
-                        f"{P_2} {gn} : <code>{issue}</code>\n"
-                        f"{P_3} Prediction : <b>{pred.upper()}</b> 〔 {lw} 〕|〔 {ll} 〕\n"
-                        f"{P_4} Status : {stat}\n"
-                        f"</blockquote>"
-                    )
-                    await pred_msg.edit_text(ftxt)
-                    if ch_msg_id:
-                        await bot.edit_message_text(chat_id=CHANNEL_ID, message_id=ch_msg_id, text=ftxt)
-                except Exception:
-                    pass
-                    
-            await asyncio.sleep(2)
-        except Exception:
-            await asyncio.sleep(5)
-
-async def auto_bet_loop(user_tg_id, message: types.Message):
-    await message.answer("🚀 Auto-Bet စတင်ပါပြီ! 🛑 Stop Auto-Bet ဖြင့် ရပ်တန့်ပါ။")
-    
-    last_issue = None
-    session = active_sessions[user_tg_id]
-    is_virtual = session.get("is_virtual_mode", False)
-    gn = session.get("game_type_name", "WINGO_30S")
-    
-    # ==========================================
-    # 📊 Streak Tracking Variables
-    # ==========================================
-    current_win_streak = 0
-    current_lose_streak = 0
-    longest_win_streak = 0
-    longest_lose_streak = 0
-    total_bets = 0
-    total_wins = 0
-    total_losses = 0
-    
-    if not is_virtual:
-        site_config = SITE_CONFIGS.get(session['site'])
-        bal_url = f"{site_config['api_url']}/GetBalance"
-        bal_headers = get_headers(session["site"], session["token"])
-
-    while active_sessions.get(user_tg_id, {}).get("is_auto_betting", False):
-        try:
-            pred, _, issue, ai_name = await get_ai_prediction(user_tg_id)
-            
-            if issue and issue != last_issue:
-                if gn == "WINGO_1M":
-                    await asyncio.sleep(30)
-                    
-                if pred == "wait":
-                    msg_txt = (
-                        f"<blockquote>\n"
-                        f"{E_DOC} Trigger စောင့်နေပါသည်\n"
-                        f"{E_DOC} {gn} : <code>{issue}</code>\n"
-                        f"</blockquote>"
-                    )
-                    msg = await message.answer(msg_txt)
-                    last_issue = issue
-                    asyncio.create_task(delete_message_later(msg, 7))
-                    await asyncio.sleep(2)
-                    continue 
-                    
-                hw = session.get("hit_wait", 0)
-                cm = session.get("current_misses", 0)
-                
-                if hw > 0 and cm < hw:
-                    hit_txt = (
-                        f"<blockquote>\n"
-                        f"{E_DOC} Hit Wait: {cm}/{hw}\n"
-                        f"{E_DOC} {gn} : <code>{issue}</code>\n"
-                        f"{E_FLOWER} Pred: {pred.upper()}\n"
-                        f"</blockquote>"
-                    )
-                    msg = await message.answer(hit_txt)
-                    
-                    res = "? | ?"
-                    for _ in range(45):
-                        if not active_sessions.get(user_tg_id, {}).get("is_auto_betting"):
-                            break
-                        await asyncio.sleep(2)
-                        res = await get_latest_game_result(issue, user_tg_id)
-                        if res != "? | ?":
-                            break
-                            
-                    try:
-                        actual = res.split(" | ")[1].strip().lower()
-                        update_model_accuracies(user_tg_id, actual)
-                        
-                        if pred.lower() == actual:
-                            active_sessions[user_tg_id]["current_misses"] = 0
-                            await msg.edit_text(f"🔄 AI အမှန်ခန့်မှန်း (Reset)\nResult: {res}")
-                        elif actual != "?": 
-                            active_sessions[user_tg_id]["current_misses"] += 1
-                            if active_sessions[user_tg_id]["current_misses"] >= hw:
-                                await msg.edit_text("🎯 Target Reached!")
-                            else:
-                                await msg.edit_text(f"❌ Loss: {active_sessions[user_tg_id]['current_misses']}/{hw}")
-                                
-                        asyncio.create_task(delete_message_later(msg, 5)) 
-                    except Exception:
-                        pass
-                        
-                    last_issue = issue
-                    await asyncio.sleep(2)
-                    continue 
-
-                seq = session.get("bet_sequence", [10])
-                step = session.get("current_bet_step", 0)
-                if step >= len(seq):
-                    step = 0
-                amt = seq[step]
-
-                if is_virtual:
-                    c_bal = session.get("virtual_balance", 0.0)
-                else:
-                    async with aiohttp.ClientSession() as http:
-                        payload = get_signed_payload({'language': 7})
-                        async with http.post(bal_url, headers=bal_headers, json=payload) as resp:
-                            bal_data = (await resp.json()).get("data", {})
-                            c_bal_raw = bal_data.get("balance", bal_data.get("amount", 0.0)) if isinstance(bal_data, dict) else bal_data
-                            c_bal = float(c_bal_raw)
-                
-                if c_bal < amt:
-                    await message.answer("⚠️ လက်ကျန်ငွေမလုံလောက်ပါ။ Stop.")
-                    active_sessions[user_tg_id]["is_auto_betting"] = False
-                    break
-
-                active_sessions[user_tg_id]["last_prediction_value"] = pred
-                bet_txt = (
-                    f"<blockquote>\n"
-                    f"{E_DOC} {gn} : <code>{issue}</code>\n"
-                    f"{E_DOC} {ai_name}\n"
-                    f"{E_FLOWER} Pred: <b>{pred.upper()}</b> | {amt} Ks\n"
-                    f"</blockquote>"
-                )
-                await message.answer(bet_txt)
-                last_issue = issue
-                await asyncio.sleep(7) 
-
-                if is_virtual:
-                    res = await get_latest_game_result(issue, user_tg_id)
-                    if res == "? | ?":
-                        rand_num = random.randint(0, 9)
-                        rand_size = 'BIG' if rand_num >= 5 else 'SMALL'
-                        res = f"{rand_num} | {rand_size}"
-                else: 
-                    success = await place_auto_bet(user_tg_id, issue, pred, amt, True)
-                    if not success:
-                        await asyncio.sleep(5)
-                        continue
-                        
-                    res = "? | ?"
-                    for _ in range(45):
-                        if not active_sessions.get(user_tg_id, {}).get("is_auto_betting"):
-                            break 
-                        await asyncio.sleep(2)
-                        res = await get_latest_game_result(issue, user_tg_id)
-                        if res != "? | ?":
-                            break 
-                
-                if is_virtual:
-                    try:
-                        actual_str = res.split(" | ")[1].strip().lower()
-                        if pred.lower() == actual_str:
-                            session["virtual_balance"] += amt * 0.96
-                        else:
-                            session["virtual_balance"] -= amt
-                        n_bal = session["virtual_balance"]
-                        await db.update_virtual_balance(user_tg_id, n_bal)
-                    except Exception:
-                        pass
-                else:
-                    async with aiohttp.ClientSession() as http:
-                        payload = get_signed_payload({'language': 7})
-                        async with http.post(bal_url, headers=bal_headers, json=payload) as resp:
-                            bal_data = (await resp.json()).get("data", {})
-                            n_bal_raw = bal_data.get("balance", bal_data.get("amount", 0.0)) if isinstance(bal_data, dict) else bal_data
-                            n_bal = float(n_bal_raw)
-
-                try:
-                    actual = res.split(" | ")[1].strip().lower() 
-                    update_model_accuracies(user_tg_id, actual)
-                    
-                    total_bets += 1
-                    
-                    if pred.lower() == actual:
-                        # ========== WIN ==========
-                        prof = amt * 0.96
-                        stat = f"{E_SETTING} <b>WIN</b> {E_CROWN} +{prof} Ks"
-                        
-                        if is_virtual:
-                            session["virtual_session_profit"] += prof
-                        else:
-                            active_sessions[user_tg_id]["session_profit"] += prof
-                            
-                        active_sessions[user_tg_id]["current_bet_step"] = 0
-                        active_sessions[user_tg_id]["current_misses"] = 0
-                        
-                        # ✅ Streak Update
-                        current_win_streak += 1
-                        current_lose_streak = 0
-                        total_wins += 1
-                        
-                        if current_win_streak > longest_win_streak:
-                            longest_win_streak = current_win_streak
-                        
-                    elif actual == "?":
-                        stat = "⚙️ DRAW (Pending)"
-                    else:
-                        # ========== LOSE ==========
-                        stat = f"{E_SETTING} <b>LOSE</b> {E_LOSS} {amt} Ks"
-                        
-                        if is_virtual:
-                            session["virtual_session_profit"] -= amt
-                        else:
-                            active_sessions[user_tg_id]["session_profit"] -= amt
-                            
-                        active_sessions[user_tg_id]["current_bet_step"] = (step + 1) % len(seq)
-                        
-                        # ❌ Streak Update
-                        current_lose_streak += 1
-                        current_win_streak = 0
-                        total_losses += 1
-                        
-                        if current_lose_streak > longest_lose_streak:
-                            longest_lose_streak = current_lose_streak
-                        
-                    if ai_name == "Set Pattern" and actual != "?":
-                        current_c_step = session.get("custom_pattern_step", 0)
-                        pat_len = len(session.get("custom_pattern", ["BIG"]))
-                        active_sessions[user_tg_id]["custom_pattern_step"] = (current_c_step + 1) % pat_len
-                        
-                    if is_virtual:
-                        c_prof = session.get("virtual_session_profit", 0.0)
-                    else:
-                        c_prof = active_sessions[user_tg_id].get("session_profit", 0.0)
-                    
-                    win_rate = (total_wins / total_bets) * 100 if total_bets > 0 else 0.0
-                    
-                    result_txt = (
-                        f"<blockquote>\n"
-                        f"{stat}\n"
-                        f"───────────────\n"
-                        f"{E_GRID} {gn} : <code>{issue}</code>\n"
-                        f"{E_GRID} Result: <code>{res}</code>\n"
-                        f"{E_EDIT} Bal: K{n_bal:,.2f} 〔{longest_win_streak} | {longest_lose_streak}〕\n"
-                        f"{E_EDIT} Total Profit: {c_prof:,.2f} Ks\n"
-                        f"</blockquote>"
-                    )
-                    
-                    await message.answer(result_txt)
-                    
-                    if not is_virtual:
-                        await db.update_user_balance(user_tg_id, f"{n_bal:.2f} Ks")
-                        
-                    profit_target = session.get("profit_target", 0)
-                    if profit_target > 0 and c_prof >= profit_target:
-                        await message.answer("🎉 Target ပြည့်ပါပြီ။ Stop.")
-                        active_sessions[user_tg_id]["is_auto_betting"] = False
-                        break
-                        
-                except Exception:
-                    pass
-            else:
-                await asyncio.sleep(5) 
-                
-        except Exception as e:
-            print(f"Loop Error: {e}")
-            await asyncio.sleep(5)
 
 # ==========================================================
 # 🎯 Feature Handlers
