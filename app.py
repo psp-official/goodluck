@@ -793,7 +793,7 @@ async def prediction_broadcast_loop(user_tg_id, message: types.Message):
                 if gn == "WINGO_1M":
                     await asyncio.sleep(30)
                 elif gn == "WINGO_30S":
-                    await asyncio.sleep(10)
+                    await asyncio.sleep(5)
                     
                 active_sessions[user_tg_id]["last_predicted_issue"] = issue
                 active_sessions[user_tg_id]["last_prediction_value"] = pred
@@ -989,7 +989,7 @@ async def auto_bet_loop(user_tg_id, message: types.Message):
                 )
                 await message.answer(bet_txt)
                 last_issue = issue
-                await asyncio.sleep(7) 
+                await asyncio.sleep(2) 
 
                 # ✅ Virtual Mode မှာ Real API Data ကိုသာ စောင့်ယူမည်
                 if is_virtual:
