@@ -226,7 +226,7 @@ async def get_game_history(
     """
     cursor = game_history_collection.find(
         {"site": site, "game_type": game_type}
-    ).sort("issue", -1).limit(limit)
+    ).sort("issue", +1).limit(limit)
     
     docs = await cursor.to_list(length=limit)
     return docs
