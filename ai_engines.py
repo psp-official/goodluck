@@ -63,6 +63,7 @@ AI_MODE_EMOJIS = {
     "Markov Chain":      "6210879046272682741",
     "ML Style AI":       "6190369920304289234",
     "Circle Rnd":        "5226711870492126219",
+    "Number Rnd":        "5884290437459480896",
     "Custom Pattern":    "6300853298249336390",
     "AI Auto Swap":      "5868665489092263539",
     "Best AI Selector": "5884289942371401145"
@@ -625,6 +626,20 @@ def circle_rnd_predict(history_docs):
     predicted = random.choice(wheel)
     burmese, dot = _label(predicted)
     return predicted, f"{P_AI_STAR} {predicted} ({burmese}) {dot}", round(random.uniform(50.0, 65.0), 1), "🎡 Circle Rnd: Spinner"
+
+def number_rnd_predict(history_docs):
+    numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    rnd_num = random.choice(numbers)
+    
+    if rnd_num in [0, 1, 2, 3, 4]:
+        predicted = "SMALL"
+    else:
+        predicted = "BIG"
+        
+    burmese, dot = _label(predicted)
+    conf = round(random.uniform(50.0, 65.0), 1)
+    return predicted, f"{P_AI_FIBONACCI} {predicted} ({burmese}) {dot}", conf, f"Number Rnd: {rnd_num} → {predicted}"
+    
 
 def custom_pattern_predict(history_docs, user_pattern="B"):
     if not user_pattern: user_pattern = "B"
@@ -1376,6 +1391,7 @@ AI_MODE_NAMES = {
     "markov_chain":     "Markov Chain",
     "ml_style":         "ML Style AI",
     "circle_rnd":       "Circle Rnd",
+    "number_rnd":       "Number Rnd", 
     "custom_pattern":   "Set Pattern",
     "auto_swap":        "AI Auto Swap",
 }
@@ -1409,6 +1425,7 @@ AI_MODES = {
     "markov_chain":     {"func": markov_chain_predict,      "name": AI_MODE_NAMES["markov_chain"],    "desc": "3rd-Order Hierarchical"},
     "ml_style":         {"func": ml_style_predict,          "name": AI_MODE_NAMES["ml_style"],        "desc": "8-Feature Weighted"},
     "circle_rnd":       {"func": circle_rnd_predict,        "name": AI_MODE_NAMES["circle_rnd"],      "desc": "Random Wheel Spin"},
+    "number_rnd":       {"func": number_rnd_predict,        "name": AI_MODE_NAMES["number_rnd"],      "desc": "0-9 Random (0-4 Small, 5-9 Big)"},
     "custom_pattern":   {"func": custom_pattern_predict,    "name": AI_MODE_NAMES["custom_pattern"],  "desc": "User စိတ်ကြိုက် Pattern"},
     "auto_swap":        {"func": auto_swap_predict,         "name": AI_MODE_NAMES["auto_swap"],       "desc": "4-Pattern Auto Change"},
     "psp_ai": {
