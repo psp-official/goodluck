@@ -1215,63 +1215,63 @@ def best_ai_selector_predict(history_docs):
 # ==========================================================
 # 🎯 Last 4 Pattern Predictor (9000+ DB)
 # ==========================================================
-def last_4_pattern_predict(history_docs):
+def last_7_pattern_predict(history_docs):
     """
     Database ထဲက 9000+ ပွဲစဉ်ကို အသုံးပြုပြီး 
-    နောက်ဆုံးထွက်ပွဲ 4 ခုကို ကြည့်ကာ၊ 
-    အဲ့ဒီ 4 ခုနောက်မှာ အများဆုံးထွက်ခဲ့တဲ့ ရလဒ်ကို ခန့်မှန်းခြင်း။
+    နောက်ဆုံးထွက်ပွဲ 7 ခုကို ကြည့်ကာ၊ 
+    အဲ့ဒီ 7 ခုနောက်မှာ အများဆုံးထွက်ခဲ့တဲ့ ရလဒ်ကို ခန့်မှန်းခြင်း။
     """
-    if len(history_docs) < 10:
-        return "BIG", "📊 Last4 (အကြီး) 🔴", 55.0, "Data မလုံလောက်သေး (Need 10+ games)"
+    if len(history_docs) < 15:
+        return "BIG", "📊 Last7 (အကြီး) 🔴", 55.0, "Data မလုံလောက်သေး (Need 15+ games)"
 
     docs = list(reversed(history_docs))  # oldest to newest
     all_history = [d.get('size', 'BIG') for d in docs]
     
-    # နောက်ဆုံးထွက် 4 ခုကို ယူမည်
-    if len(all_history) < 4:
-        return "BIG", "📊 Last4 (အကြီး) 🔴", 55.0, "Data မလုံလောက်ပါ"
+    # နောက်ဆုံးထွက် 7 ခုကို ယူမည်
+    if len(all_history) < 7:
+        return "BIG", "📊 Last7 (အကြီး) 🔴", 55.0, "Data မလုံလောက်ပါ"
         
-    last_4 = all_history[-4:]
+    last_7 = all_history[-7:]
     
-    # Database ထဲက 9000+ ပွဲစဉ်ထဲမှာ ဒီ 4 ခု Pattern ရှိခဲ့ဖူးလား ရှာမည်
+    # Database ထဲက 9000+ ပွဲစဉ်ထဲမှာ ဒီ 7 ခု Pattern ရှိခဲ့ဖူးလား ရှာမည်
     big_count = 0
     small_count = 0
     total_matches = 0
     
-    # နောက်ဆုံး 4 ခု မပါဝင်အောင် ရှာမည်
-    for i in range(len(all_history) - 5):
-        if all_history[i:i+4] == last_4:
+    # နောက်ဆုံး 7 ခု မပါဝင်အောင် ရှာမည် (i+7 သည် နောက်ထပ်ထွက်မည့်ရလဒ် index ဖြစ်သည်)
+    for i in range(len(all_history) - 7):
+        if all_history[i:i+7] == last_7:
             total_matches += 1
-            next_result = all_history[i+4]
+            next_result = all_history[i+7]
             if next_result == "BIG":
                 big_count += 1
             else:
                 small_count += 1
                 
+    pattern_str = "-".join(last_7).replace('BIG', 'B').replace('SMALL', 'S')
+
     # Pattern မတွေ့ပါက နောက်ဆုံးပွဲရလဒ်ကို ခန့်မှန်းမည်
     if total_matches == 0:
         pred = all_history[-1]
         burmese, dot = _label(pred)
-        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", 55.0, f"Pattern အသစ် (No match) → {pred}"
+        return pred, f"📊 Last7: {pred} ({burmese}) {dot}", 55.0, f"Pattern အသစ် (No match) → {pred}"
         
     # အများဆုံးထွက်တာကို ရွေးမည်
     if big_count > small_count:
         pred = "BIG"
         confidence = min(55 + (big_count / total_matches) * 30, 85)
         burmese, dot = _label(pred)
-        pattern_str = "-".join(last_4).replace('BIG', 'B').replace('SMALL', 'S')
-        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({big_count}/{total_matches})"
+        return pred, f"📊 Last7: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({big_count}/{total_matches})"
     elif small_count > big_count:
         pred = "SMALL"
         confidence = min(55 + (small_count / total_matches) * 30, 85)
         burmese, dot = _label(pred)
-        pattern_str = "-".join(last_4).replace('BIG', 'B').replace('SMALL', 'S')
-        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({small_count}/{total_matches})"
+        return pred, f"📊 Last7: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({small_count}/{total_matches})"
     else:
-        # တူညီနေပါက အများဆုံးထွက်တဲ့ဘက်ကို ရွေးမည်
+        # တူညီနေပါက နောက်ဆုံးပွဲအတိုင်း ရွေးမည်
         pred = all_history[-1]
         burmese, dot = _label(pred)
-        return pred, f"📊 Last4: {pred} ({burmese}) {dot}", 55.0, f"Pattern {last_4} (မဲတူနေသဖြင့် နောက်ဆုံးပွဲအတိုင်း)"
+        return pred, f"📊 Last7: {pred} ({burmese}) {dot}", 55.0, f"Pattern {pattern_str} (မဲတူနေသဖြင့် နောက်ဆုံးပွဲအတိုင်း)"
 
 
 # ==========================================================
@@ -1374,7 +1374,7 @@ AI_MODE_NAMES = {
     "pattern":          "Pattern AI",
     "dynamic_best_pattern": "Best Pattern Auto-Switch",
     "best_ai_selector": "Best AI Selector",
-    "last_4_pattern":   "Last 4 Pattern",
+    "last_7_pattern":   "Last 7 Pattern",
     "martingale":       "Martingale AI",
     "anti_martingale":  "Anti-Martingale AI",
     "trend_following":  "Trend Following",
@@ -1404,10 +1404,10 @@ AI_MODES = {
         "name": AI_MODE_NAMES["dynamic_best_pattern"],
         "desc": "Auto-Switch to best pattern based on 9000+ DB"
     },
-    "last_4_pattern": {
-        "func": last_4_pattern_predict,
-        "name": AI_MODE_NAMES["last_4_pattern"],  
-        "desc": "နောက်ဆုံး 4 ခုကိုကြည့်ပြီး အများဆုံးထွက်တာကို ရွေးခြင်း"
+    "last_7_pattern": {
+        "func": last_7_pattern_predict,
+        "name": AI_MODE_NAMES["last_7_pattern"],  
+        "desc": "နောက်ဆုံး 7 ခုကိုကြည့်ပြီး အများဆုံးထွက်တာကို ရွေးခြင်း"
     },
     "martingale":       {"func": martingale_predict,        "name": AI_MODE_NAMES["martingale"],      "desc": "Multi-Win Contrarian"},
     "anti_martingale":  {"func": anti_martingale_predict,   "name": AI_MODE_NAMES["anti_martingale"], "desc": "Exp-Streak Follow"},
