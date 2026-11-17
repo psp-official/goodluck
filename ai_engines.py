@@ -1238,8 +1238,8 @@ def last_7_pattern_predict(history_docs):
     small_count = 0
     total_matches = 0
     
-    # နောက်ဆုံး 7 ခု မပါဝင်အောင် ရှာမည် (i+7 သည် နောက်ထပ်ထွက်မည့်ရလဒ် index ဖြစ်သည်)
-    for i in range(len(all_history) - 7):
+    # နောက်ဆုံး 7 ခု မပါဝင်အောင် ရှာမည်
+    for i in range(len(all_history) - 8):
         if all_history[i:i+7] == last_7:
             total_matches += 1
             next_result = all_history[i+7]
@@ -1248,14 +1248,14 @@ def last_7_pattern_predict(history_docs):
             else:
                 small_count += 1
                 
-    pattern_str = "-".join(last_7).replace('BIG', 'B').replace('SMALL', 'S')
-
     # Pattern မတွေ့ပါက နောက်ဆုံးပွဲရလဒ်ကို ခန့်မှန်းမည်
     if total_matches == 0:
         pred = all_history[-1]
         burmese, dot = _label(pred)
         return pred, f"📊 Last7: {pred} ({burmese}) {dot}", 55.0, f"Pattern အသစ် (No match) → {pred}"
         
+    pattern_str = "-".join(last_7).replace('BIG', 'B').replace('SMALL', 'S')
+
     # အများဆုံးထွက်တာကို ရွေးမည်
     if big_count > small_count:
         pred = "BIG"
@@ -1268,10 +1268,11 @@ def last_7_pattern_predict(history_docs):
         burmese, dot = _label(pred)
         return pred, f"📊 Last7: {pred} ({burmese}) {dot}", confidence, f"Pattern {pattern_str} → {pred} ({small_count}/{total_matches})"
     else:
-        # တူညီနေပါက နောက်ဆုံးပွဲအတိုင်း ရွေးမည်
+        # တူညီနေပါက နောက်ဆုံးထွက်တဲ့ဘက်ကို ရွေးမည်
         pred = all_history[-1]
         burmese, dot = _label(pred)
         return pred, f"📊 Last7: {pred} ({burmese}) {dot}", 55.0, f"Pattern {pattern_str} (မဲတူနေသဖြင့် နောက်ဆုံးပွဲအတိုင်း)"
+
 
 
 # ==========================================================
