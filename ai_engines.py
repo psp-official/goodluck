@@ -698,7 +698,7 @@ def psp_ai_predict(history_docs):
     base_prob = 55.0
     reason = "Pattern အသစ်ဖြစ်နေသဖြင့် သမိုင်းကြောင်းအရ တွက်ချက်ထားသည်"
 
-    MAX_PATTERN_LENGTH = 10
+    MAX_PATTERN_LENGTH = 15
     MIN_PATTERN_LENGTH = 3
     pattern_found = False  # မူလက True ဖြစ်နေသည်ကို False သို့ ပြင်ဆင်ထားသည်
 
