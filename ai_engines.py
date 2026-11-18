@@ -679,88 +679,86 @@ def auto_swap_predict(history_docs):
 
     return predicted, f"🔄 {predicted} ({burmese}) {dot}", conf, f"🔄 Auto Swap ({recent_str} → {predicted})"
 
-def psp_ai_predict(history_list):
+def psp_ai_predict(history_docs):
     """
     10-Pattern Dynamic Learning AI
-    
-    Parameters:
-    - history_list: list of strings ["BIG", "SMALL", "BIG", ...]
-                   (နောက်ဆုံးထွက်ပွဲမှ စ၍ ရှေ့သို့ စီထားရန်)
-    
-    Returns:
-    - prediction: "BIG" or "SMALL"
-    - confidence: float (55.0 - 85.0)
-    - reason: string (အကြောင်းပြချက်)
-    - display: "BIG (အကြီး) 🔴" or "SMALL (အသေး) 🟢"
     """
-    
+    if not history_docs or len(history_docs) < 4:
+        return "BIG", "🎯 BIG (အကြီး) 🔴", 55.0, "⏳ PSP AI: Data စုဆောင်းဆဲ..."
+
+    # history_docs (dict list) သို့မဟုတ် history_list (string list) နှစ်မျိုးလုံး လက်ခံနိုင်ရန် စစ်ဆေးခြင်း
+    if isinstance(history_docs[0], dict):
+        docs = list(reversed(history_docs))  # အဟောင်းမှ အသစ်သို့ စီရန်
+        history_list = [d.get('size', 'BIG') for d in docs]
+    else:
+        history_list = list(history_docs)
+
     # 1️⃣ Pattern Detection Logic
     predicted = "BIG (အကြီး) 🔴"
     base_prob = 55.0
     reason = "Pattern အသစ်ဖြစ်နေသဖြင့် သမိုင်းကြောင်းအရ တွက်ချက်ထားသည်"
-    
-    MAX_PATTERN_LENGTH = 7
-    MIN_PATTERN_LENGTH = 7
-    pattern_found = True
-    
-    # နောက်ဆုံး ပွဲစဉ်ကို ရယူပြီး pattern ရှာခြင်း
-    if len(history_list) >= 7:
+
+    MAX_PATTERN_LENGTH = 10
+    MIN_PATTERN_LENGTH = 3
+    pattern_found = False  # မူလက True ဖြစ်နေသည်ကို False သို့ ပြင်ဆင်ထားသည်
+
+    # နောက်ဆုံး ပွဲစဉ်ကို ရယူပြီး အရှည်ဆုံး pattern မှစ၍ ရှာခြင်း
+    if len(history_list) >= 4:
         for current_len in range(MAX_PATTERN_LENGTH, MIN_PATTERN_LENGTH - 1, -1):
             if len(history_list) > current_len:
                 recent_pattern = history_list[-current_len:]
                 big_next_count = 0
                 small_next_count = 0
-                
+
                 # Pattern တွေ့ပါက နောက်ထွက်မည့် ရလဒ်ကို ရေတွက်ခြင်း
                 for i in range(len(history_list) - current_len):
-                    if history_list[i:i+current_len] == recent_pattern:
-                        next_result = history_list[i+current_len]
+                    if history_list[i:i + current_len] == recent_pattern:
+                        next_result = history_list[i + current_len]
                         if next_result == 'BIG':
                             big_next_count += 1
                         elif next_result == 'SMALL':
                             small_next_count += 1
-                            
+
                 total_pattern_matches = big_next_count + small_next_count
                 if total_pattern_matches > 0:
                     big_prob = (big_next_count / total_pattern_matches) * 100
                     small_prob = (small_next_count / total_pattern_matches) * 100
                     pattern_str = "-".join(recent_pattern).replace('BIG', 'B').replace('SMALL', 'S')
-                    
+
                     if big_prob > small_prob:
-                        predicted = "BIG (အကြီး) 🔴"
+                        predicted = "🎯 BIG (အကြီး) 🔴"
                         base_prob = big_prob
-                        reason = f"[{pattern_str}] လာလျှင် အကြီးဆက်ထွက်လေ့ရှိ၍"
-                    elif small_prob > small_prob:
-                        predicted = "SMALL (အသေး) 🟢"
+                        reason = f"[{pattern_str}] လာလျှင် အကြီးဆက်ထွက်လေ့ရှိ၍ ({big_next_count}/{total_pattern_matches})"
+                    elif small_prob > big_prob:  # small_prob > small_prob အမှားကို ပြင်ဆင်ထားသည်
+                        predicted = "🎯 SMALL (အသေး) 🟢"
                         base_prob = small_prob
-                        reason = f"[{pattern_str}] လာလျှင် အသေးဆက်ထွက်လေ့ရှိ၍"
+                        reason = f"[{pattern_str}] လာလျှင် အသေးဆက်ထွက်လေ့ရှိ၍ ({small_next_count}/{total_pattern_matches})"
                     else:
-                        predicted = "BIG (အကြီး) 🔴"
-                        base_prob = 50.0
-                        reason = f"[{pattern_str}] အရင်က မျှခြေထွက်ဖူး၍ အကြီးရွေးထားသည်"
-                    
+                        last_res = history_list[-1]
+                        burmese, dot = _label(last_res)
+                        predicted = f"🎯 {last_res} ({burmese}) {dot}"
+                        base_prob = 55.0
+                        reason = f"[{pattern_str}] အရင်က မျှခြေထွက်ဖူး၍ နောက်ဆုံးပွဲအတိုင်း ရွေးထားသည်"
+
                     pattern_found = True
                     break
-    
-    # Pattern မတွေ့ပါက အများဆုံးထွက်ထားသော ရလဒ်ကို ရွေးချယ်ခြင်း
+
+    # 2️⃣ Pattern မတွေ့ပါက အများဆုံးထွက်ထားသော ရလဒ်ကို ရွေးချယ်ခြင်း
     if not pattern_found:
         if history_list.count("SMALL") > history_list.count("BIG"):
-            predicted = "SMALL (အသေး) 🟢"
+            predicted = "🎯 SMALL (အသေး) 🟢"
         else:
-            predicted = "BIG (အကြီး) 🔴"
+            predicted = "🎯 BIG (အကြီး) 🔴"
         base_prob = 55.0
         reason = "Pattern အသစ်ဖြစ်နေသဖြင့် သမိုင်းကြောင်းအရ တွက်ချက်ထားသည်"
 
-    # Confidence ကို 85% အထိ ကန့်သတ်ခြင်း
-    final_prob = min(round(base_prob, 1), 85.0)
+    # Confidence ကို 55% မှ 85% အတွင်း ကန့်သတ်ခြင်း
+    final_prob = max(55.0, min(round(base_prob, 1), 85.0))
     prediction = "BIG" if "BIG" in predicted else "SMALL"
 
-    return {
-        "prediction": prediction,
-        "confidence": final_prob,
-        "reason": reason,
-        "display": predicted
-    }
+    # AI_MODES ရှိ အခြား function များနှင့် ကိုက်ညီစေရန် Tuple ပြန်ပေးခြင်း
+    return prediction, predicted, final_prob, reason
+
 
 # ============================================================
 # 👑 PRO AI FEATURES & NEW ADVANCED MODELS
